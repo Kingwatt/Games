@@ -59,28 +59,105 @@
 //	SNDLVL_150dB	= 150,	// 0.2
 
 
-
-soundscaples_manifest
+"Flash.Street"
 {
-	"file"		"scripts/soundscapes_dust.txt"
-	"file"		"scripts/soundscapes_italy.txt"
-	"file"		"scripts/soundscapes_aztec.txt"
-	"file"		"scripts/soundscapes_dust2.txt"
-	"file"		"scripts/soundscapes_cbble.txt"
-	"file"		"scripts/soundscapes_havana.txt"
-	"file"		"scripts/soundscapes_piranesi.txt"
-	"file"		"scripts/soundscapes_chateau.txt"
-	"file"		"scripts/soundscapes_office.txt"
-	"file"		"scripts/soundscapes_prodigy.txt"
-	"file"		"scripts/soundscapes_tides.txt"
-	"file"		"scripts/soundscapes_compound.txt"
-	"file"		"scripts/soundscapes_train.txt"
-	"file"		"scripts/soundscapes_general.txt"
-	"file"		"scripts/soundscapes_inferno.txt"
-	"file"		"scripts/soundscapes_port.txt"
-	"file"		"scripts/soundscapes_assault.txt"
-	"file"		"scripts/soundscapes_nuke.txt"
-	"file"		"scripts/soundscapes_militia.txt"
+	"dsp"	"1"
 
-	// List additional soundscape files here
+
+	"playlooping"
+	{
+		"volume"		".5"
+		"pitch"		"100"
+		"wave"		"ambient/lightwindcreaks.wav"
+	}
+
+	"playlooping"
+	{
+		"volume"		".85"
+		"pitch"		"100"
+		"wave"		"ambient/lightwind.wav"
+	}
+	"playrandom"
+	{
+		"time"		"20, 50"
+		"volume"		"1"
+		"pitch"		"100"
+
+		"rndwave"
+		{
+			"wave"		"ambient/bird1.wav"
+			"wave"		"ambient/bird2.wav"
+			"wave"		"ambient/bird3.wav"
+		}
+	}
+
+	"playlooping"
+	{
+		"volume"		".5"
+		"pitch"		"100"
+		"wave"		"ambient/distantbattle.wav"
+	}
+}
+
+"Flash.Field"
+{
+	"dsp"	"1"
+
+	"playlooping"
+	{
+		"volume"		".5"
+		"pitch"		"100"
+		"wave"		"ambient/lightwindcreaks.wav"
+	}
+
+	"playlooping"
+	{
+		"volume"		".5"
+		"pitch"		"100"
+		"wave"		"ambient/distantbattle.wav"
+	}
+
+	"playlooping"
+	{
+		"volume"		".85"
+		"pitch"		"100"
+		"wave"		"ambient/lightwind.wav"
+	}
+	
+	"playrandom"
+	{
+		"time"		"25, 30"
+		"volume"	"1"
+		"pitch"		"100"
+		"rndwave"
+		{
+			"wave"		"ambient/tankmovement.wav"
+			"wave"		"ambient/tankmovement2.wav"
+			"wave"		"ambient/tankmovement3.wav"
+		}		
+	}
+
+	"playrandom"
+	{
+		"time"		"20, 40"
+		"volume"	"1"
+		"pitch"		"100"
+
+		"rndwave"
+		{
+			"wave"		"ambient/bird1.wav"
+			"wave"		"ambient/bird2.wav"
+			"wave"		"ambient/bird3.wav"
+		}
+	}
+}
+
+"Flash.Indoors"
+{
+	"playlooping"
+	{
+		"volume"	".5"
+		"pitch"		"100"
+		"wave"		"ambient/indoors.wav"
+	}
 }

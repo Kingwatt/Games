@@ -59,28 +59,75 @@
 //	SNDLVL_150dB	= 150,	// 0.2
 
 
-
-soundscaples_manifest
+"Argentan.MainAmbient"
 {
-	"file"		"scripts/soundscapes_dust.txt"
-	"file"		"scripts/soundscapes_italy.txt"
-	"file"		"scripts/soundscapes_aztec.txt"
-	"file"		"scripts/soundscapes_dust2.txt"
-	"file"		"scripts/soundscapes_cbble.txt"
-	"file"		"scripts/soundscapes_havana.txt"
-	"file"		"scripts/soundscapes_piranesi.txt"
-	"file"		"scripts/soundscapes_chateau.txt"
-	"file"		"scripts/soundscapes_office.txt"
-	"file"		"scripts/soundscapes_prodigy.txt"
-	"file"		"scripts/soundscapes_tides.txt"
-	"file"		"scripts/soundscapes_compound.txt"
-	"file"		"scripts/soundscapes_train.txt"
-	"file"		"scripts/soundscapes_general.txt"
-	"file"		"scripts/soundscapes_inferno.txt"
-	"file"		"scripts/soundscapes_port.txt"
-	"file"		"scripts/soundscapes_assault.txt"
-	"file"		"scripts/soundscapes_nuke.txt"
-	"file"		"scripts/soundscapes_militia.txt"
+	// old dsp 24
+	"dsp"	"1"
 
-	// List additional soundscape files here
+	"playlooping"
+	{
+		"volume"		".5"
+		"pitch"		"100"
+		"wave"		"ambient/windnearwater.wav"
+	}
+		
+	
+	"playlooping"
+	{
+		"volume"		".3"
+		"pitch"		"100"
+		"wave"		"ambient/windcracksandsnaps.wav"
+	}
+	
+	 "playsoundscape"
+ 	{
+  		"name"  "Argentan.Windmill"
+  		"positionoverride" "0"
+ 	}
+
+	 "playsoundscape"
+ 	{
+  		"name"  "Argentan.BlownStation"
+  		"positionoverride" "1"
+ 	}
+}
+
+"Argentan.Windmill"
+{
+	"playlooping"
+	{
+		"volume"	"1"
+		"pitch"		"100"
+		"soundlevel"  	"SNDLVL_89dB"
+		"wave"		"ambient/windmill.wav"
+	}
+}
+
+"Argentan.BlownStation"
+{
+	"playrandom"
+	{
+		"time"		"10,15"
+		"volume"	"1"
+		"soundlevel"  	"SNDLVL_77dB"
+		"pitch"		"100"
+		"rndwave"
+		{
+			"wave"	"ambient/creakmetal1.wav"
+			"wave"	"ambient/creakmetal2.wav"
+			"wave"	"ambient/creakmetal3.wav"
+			"wave"	"ambient/creakmetal4.wav"
+			"wave"	"ambient/creakmetal5.wav"
+		}
+	}
+}
+
+"Argentan.Indoors"
+{
+	"playlooping"
+	{
+		"volume"	".5"
+		"pitch"		"100"
+		"wave"		"ambient/indoors.wav"
+	}
 }
