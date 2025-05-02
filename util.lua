@@ -1,418 +1,369 @@
+-- Random stuff
 
--- Return if there's nothing to add on to
-if ( !util ) then return end
+if not util then return end
 
-if ( CLIENT ) then
-	include( "util/worldpicker.lua" )
+local math = math
+local string = string
+local table = table
+local pairs = pairs
+
+-- attempts to get the weapon used from a DamageInfo instance needed because the
+-- GetAmmoType value is useless and inflictor isn't properly set (yet)
+function util.WeaponFromDamage(dmg)
+   local inf = dmg:GetInflictor()
+   local wep = nil
+   if IsValid(inf) then
+      if inf:IsWeapon() or inf.Projectile then
+         wep = inf
+      elseif dmg:IsDamageType(DMG_DIRECT) or dmg:IsDamageType(DMG_CRUSH) then
+         -- DMG_DIRECT is the player burning, no weapon involved
+         -- DMG_CRUSH is physics or falling on someone
+         wep = nil
+      elseif inf:IsPlayer() then
+         wep = inf:GetActiveWeapon()
+         if not IsValid(wep) then
+            -- this may have been a dying shot, in which case we need a
+            -- workaround to find the weapon because it was dropped on death
+            wep = IsValid(inf.dying_wep) and inf.dying_wep or nil
+         end
+      end
+   end
+
+   return wep
 end
 
---[[---------------------------------------------------------
-   Name:	IsValidPhysicsObject
-   Params:	<ent> <num>
-   Desc:	Returns true if physics object is valid, false if not
------------------------------------------------------------]]
-function util.IsValidPhysicsObject( ent, num )
+-- Gets the table for a SWEP or a weapon-SENT (throwing knife), so not
+-- equivalent to weapons.Get. Do not modify the table returned by this, consider
+-- as read-only.
+function util.WeaponForClass(cls)
+   local wep = weapons.GetStored(cls)
 
-	-- Make sure the entity is valid
-	if ( !ent or ( !ent:IsValid() and !ent:IsWorld() ) ) then return false end
+   if not wep then
+      wep = scripted_ents.GetStored(cls)
+      if wep then
+         -- don't like to rely on this, but the alternative is
+         -- scripted_ents.Get which does a full table copy, so only do
+         -- that as last resort
+         wep = wep.t or scripted_ents.Get(cls)
+      end
+   end
 
-	-- This is to stop attaching to walking NPCs.
-	-- Although this is possible and `works', it can severly reduce the
-	-- performance of the server.. Plus they don't pay attention to constraints
-	-- anyway - so we're not really losing anything.
-
-	local MoveType = ent:GetMoveType()
-	if ( !ent:IsWorld() and MoveType != MOVETYPE_VPHYSICS and !( ent:GetModel() and ent:GetModel():StartsWith( "*" ) ) ) then return false end
-
-	local Phys = ent:GetPhysicsObjectNum( num )
-	return IsValid( Phys )
-
+   return wep
 end
 
---[[---------------------------------------------------------
-	Name: GetPlayerTrace( ply, dir )
-	Desc: Returns a generic trace table for the player
-			(dir is optional, defaults to the player's aim)
------------------------------------------------------------]]
-function util.GetPlayerTrace( ply, dir )
+function util.GetAlivePlayers()
+   local alive = {}
+   for k, p in player.Iterator() do
+      if IsValid(p) and p:Alive() and p:IsTerror() then
+         table.insert(alive, p)
+      end
+   end
 
-	dir = dir or ply:GetAimVector()
-
-	local trace = {}
-
-	trace.start = ply:EyePos()
-	trace.endpos = trace.start + ( dir * ( 4096 * 8 ) )
-	trace.filter = ply
-
-	return trace
-
+   return alive
 end
 
+function util.GetNextAlivePlayer(ply)
+   local alive = util.GetAlivePlayers()
 
---[[---------------------------------------------------------
-	Name: QuickTrace( origin, offset, filter )
-	Desc: Quick trace
------------------------------------------------------------]]
-function util.QuickTrace( origin, dir, filter )
+   if #alive < 1 then return nil end
 
-	local trace = {}
+   local prev = nil
+   local choice = nil
 
-	trace.start = origin
-	trace.endpos = origin + dir
-	trace.filter = filter
+   if IsValid(ply) then
+      for k,p in ipairs(alive) do
+         if prev == ply then
+            choice = p
+         end
 
-	return util.TraceLine( trace )
+         prev = p
+      end
+   end
 
+   if not IsValid(choice) then
+      choice = alive[1]
+   end
+
+   return choice
 end
 
+-- Uppercases the first character only
+function string.Capitalize(str)
+   return string.upper(string.sub(str, 1, 1)) .. string.sub(str, 2)
+end
+util.Capitalize = string.Capitalize
 
---[[---------------------------------------------------------
-	Name: tobool( in )
-	Desc: Turn variable into bool
------------------------------------------------------------]]
-util.tobool = tobool
+-- Color unpacking
+function clr(color) return color.r, color.g, color.b, color.a; end
 
-
---[[---------------------------------------------------------
-	Name: LocalToWorld( ent, lpos, bone )
-	Desc: Convert the local position on an entity to world pos
------------------------------------------------------------]]
-function util.LocalToWorld( ent, lpos, bone )
-
-	bone = bone or 0
-	if ( ent:EntIndex() == 0 ) then
-		return lpos
-	else
-		if ( IsValid( ent:GetPhysicsObjectNum( bone ) ) ) then
-			return ent:GetPhysicsObjectNum( bone ):LocalToWorld( lpos )
-		else
-			return ent:LocalToWorld( lpos )
-		end
-	end
-
-	return nil
-
+if CLIENT then
+   -- Is screenpos on screen?
+   function IsOffScreen(scrpos)
+      return not scrpos.visible or scrpos.x < 0 or scrpos.y < 0 or scrpos.x > ScrW() or scrpos.y > ScrH()
+   end
 end
 
-
---[[---------------------------------------------------------
-	Returns year, month, day and hour, minute, second in a formatted string.
------------------------------------------------------------]]
-function util.DateStamp()
-
-	local t = os.date( '*t' )
-	return t.year .. "-" .. t.month .. "-" .. t.day .. " " .. Format( "%02i-%02i-%02i", t.hour, t.min, t.sec )
-
+function AccessorFuncDT(tbl, varname, name)
+   tbl["Get" .. name] = function(s) return s.dt and s.dt[varname] end
+   tbl["Set" .. name] = function(s, v) if s.dt then s.dt[varname] = v end end
 end
 
---[[---------------------------------------------------------
-	Convert a string to a certain type
------------------------------------------------------------]]
-function util.StringToType( str, typename )
+function util.PaintDown(start, effname, ignore)
+   local btr = util.TraceLine({start=start, endpos=(start + Vector(0,0,-256)), filter=ignore, mask=MASK_SOLID})
 
-	typename = typename:lower()
-
-	if ( typename == "vector" )	then return Vector( str ) end
-	if ( typename == "angle" )	then return Angle( str ) end
-	if ( typename == "float" || typename == "number" )	then return tonumber( str ) end
-	if ( typename == "int" )	then local v = tonumber( str ) return v and math.Round( v ) or nil end
-	if ( typename == "bool" || typename == "boolean" )	then return tobool( str ) end
-	if ( typename == "string" )	then return tostring( str ) end
-	if ( typename == "entity" )	then return Entity( str ) end
-
-	MsgN( "util.StringToType: unknown type \"", typename, "\"!" )
-
+   util.Decal(effname, btr.HitPos+btr.HitNormal, btr.HitPos-btr.HitNormal)
 end
 
---
--- Convert a type to a (nice, but still parsable) string
---
-function util.TypeToString( v )
+local function DoBleed(ent)
+   if not IsValid(ent) or (ent:IsPlayer() and (not ent:Alive() or not ent:IsTerror())) then
+      return
+   end
 
-	local iD = TypeID( v )
+   local jitter = VectorRand() * 30
+   jitter.z = 20
 
-	if ( iD == TYPE_VECTOR or iD == TYPE_ANGLE ) then
-		return string.format( "%.2f %.2f %.2f", v:Unpack() )
-	end
-
-	if ( iD == TYPE_NUMBER ) then
-		return util.NiceFloat( v )
-	end
-
-	return tostring( v )
-
+   util.PaintDown(ent:GetPos() + jitter, "Blood", ent)
 end
 
+-- Something hurt us, start bleeding for a bit depending on the amount
+function util.StartBleeding(ent, dmg, t)
+   if dmg < 5 or not IsValid(ent) then
+      return
+   end
 
---
--- Formats a float by stripping off extra 0's and .'s
---
---	0.00	->		0
---	0.10	->		0.1
---	1.00	->		1
---	1.49	->		1.49
---	5.90	->		5.9
---
-function util.NiceFloat( f )
+   if ent:IsPlayer() and (not ent:Alive() or not ent:IsTerror()) then
+      return
+   end
 
-	local str = string.format( "%f", f )
+   local times = math.Clamp(math.Round(dmg / 15), 1, 20)
 
-	str = str:TrimRight( "0" )
-	str = str:TrimRight( "." )
+   local delay = math.Clamp(t / times , 0.1, 2)
 
-	return str
+   if ent:IsPlayer() then
+      times = times * 2
+      delay = delay / 2
+   end
 
+   timer.Create("bleed" .. ent:EntIndex(), delay, times,
+                function() DoBleed(ent) end)
 end
 
-
-
---
--- Timer
---
---
-local T =
-{
-	--
-	-- Resets the timer to nothing
-	--
-	Reset = function( self )
-
-		self.starttime = CurTime() - self.starttime
-		self.endtime = nil
-
-	end,
-
-	--
-	-- Starts the timer, call with end time
-	--
-	Start = function( self, time )
-
-		self.starttime = CurTime()
-		self.endtime = CurTime() + ( time or 0 )
-
-	end,
-
-	--
-	-- Returns true if the timer has been started
-	--
-	Started = function( self )
-
-		return self.endtime != nil
-
-	end,
-
-	--
-	-- Returns true if the time has elapsed
-	--
-	Elapsed = function( self )
-
-		return self.endtime == nil or self.endtime <= CurTime()
-
-	end,
-
-	--
-	-- Returns the amount of time that has passed since the Timer was started
-	--
-	GetElaspedTime = function( self )
-
-		return self:Started() and CurTime() - self.starttime or self.starttime
-
-	end
-}
-
-T.__index = T
-
---
--- Create a new timer object
---
-function util.Timer( startdelay )
-
-	local t = {}
-	setmetatable( t, T )
-	t:Start( startdelay or 0 )
-	return t
-
+function util.StopBleeding(ent)
+   timer.Remove("bleed" .. ent:EntIndex())
 end
 
-local function PopStack( self, num )
-
-	if ( num == nil ) then
-		num = 1
-	elseif ( num < 0 ) then
-		error( string.format( "attempted to pop %d elements in stack, expected >= 0", num ), 3 )
-	else
-		num = math.floor( num )
-	end
-
-	local len = self[ 0 ]
-
-	if ( num > len ) then
-		error( string.format( "attempted to pop %u element%s in stack of length %u", num, num == 1 and "" or "s", len ), 3 )
-	end
-
-	return num, len
-
+local zapsound = Sound("npc/assassin/ball_zap1.wav")
+function util.EquipmentDestroyed(pos)
+   local effect = EffectData()
+   effect:SetOrigin(pos)
+   util.Effect("cball_explode", effect)
+   sound.Play(zapsound, pos)
 end
 
-local STACK =
-{
-	Push = function( self, obj )
-		local len = self[ 0 ] + 1
-		self[ len ] = obj
-		self[ 0 ] = len
-	end,
-
-	Pop = function( self, num )
-		local len
-		num, len = PopStack( self, num )
-
-		if ( num == 0 ) then
-			return nil
-		end
-
-		local newlen = len - num
-		self[ 0 ] = newlen
-
-		newlen = newlen + 1
-		local ret = self[ newlen ]
-
-		-- Pop up to the last element
-		for i = len, newlen, -1 do
-			self[ i ] = nil
-		end
-
-		return ret
-	end,
-
-	PopMulti = function( self, num )
-		local len
-		num, len = PopStack( self, num )
-
-		if ( num == 0 ) then
-			return {}
-		end
-
-		local newlen = len - num
-		self[ 0 ] = newlen
-
-		local ret = {}
-		local retpos = 0
-
-		-- Pop each element and add it to the table
-		-- Iterate in reverse since the stack is internally stored
-		-- with 1 being the bottom element and len being the top
-		-- But the return will have 1 as the top element
-		for i = len, newlen + 1, -1 do
-			retpos = retpos + 1
-			ret[ retpos ] = self[ i ]
-
-			self[ i ] = nil
-		end
-
-		return ret
-	end,
-
-	Top = function( self )
-		local len = self[ 0 ]
-
-		if ( len == 0 ) then
-			return nil
-		end
-
-		return self[ len ]
-	end,
-
-	Size = function( self )
-		return self[ 0 ]
-	end
-}
-
-STACK.__index = STACK
-
-function util.Stack()
-	return setmetatable( { [ 0 ] = 0 }, STACK )
+-- Useful default behaviour for semi-modal DFrames
+function util.BasicKeyHandler(pnl, kc)
+   -- passthrough F5
+   if kc == KEY_F5 then
+      RunConsoleCommand("jpeg")
+   else
+      pnl:Close()
+   end
 end
 
--- Helper for the following functions. This is not ideal but we cannot change this because it will break existing addons.
-local function GetUniqueID( sid )
-	return util.CRC( "gm_" .. sid .. "_gm" )
+function util.noop() end
+function util.passthrough(x) return x end
+
+-- Fisher-Yates shuffle
+local rand = math.random
+function table.Shuffle(t)
+  local n = #t
+
+  while n > 1 do
+    -- n is now the last pertinent index
+    local k = rand(n) -- 1 <= k <= n
+    -- Quick swap
+    t[n], t[k] = t[k], t[n]
+    n = n - 1
+  end
+
+  return t
 end
 
---[[---------------------------------------------------------
-	Name: GetPData( steamid, name, default )
-	Desc: Gets the persistant data from a player by steamid
------------------------------------------------------------]]
-function util.GetPData( steamid, name, default )
+-- Override with nil check
+function table.HasValue(tbl, val)
+   if not tbl then return end
 
-	-- First try looking up using the new key
-	local key = Format( "%s[%s]", util.SteamIDTo64( steamid ), name )
-	local val = sql.QueryValue( "SELECT value FROM playerpdata WHERE infoid = " .. SQLStr( key ) .. " LIMIT 1" )
-	if ( val == nil ) then
-
-		-- Not found? Look using the old key
-		local oldkey = Format( "%s[%s]", GetUniqueID( steamid ), name )
-		val = sql.QueryValue( "SELECT value FROM playerpdata WHERE infoid = " .. SQLStr( oldkey ) .. " LIMIT 1" )
-		if ( val == nil ) then return default end
-
-	end
-
-	return val
-
+   for k, v in pairs(tbl) do
+      if v == val then return true end
+   end
+   return false
 end
 
---[[---------------------------------------------------------
-	Name: SetPData( steamid, name, value )
-	Desc: Sets the persistant data of a player by steamid
------------------------------------------------------------]]
-function util.SetPData( steamid, name, value )
+-- Value equality for tables
+function table.EqualValues(a, b)
+   if a == b then return true end
 
-	local key = Format( "%s[%s]", util.SteamIDTo64( steamid ), name )
-	sql.Query( "REPLACE INTO playerpdata ( infoid, value ) VALUES ( " .. SQLStr( key ) .. ", " .. SQLStr( value ) .. " )" )
+   for k, v in pairs(a) do
+      if v != b[k] then
+         return false
+      end
+   end
 
+   return true
 end
 
---[[---------------------------------------------------------
-	Name: RemovePData( steamid, name )
-	Desc: Removes the persistant data from a player by steamid
------------------------------------------------------------]]
-function util.RemovePData( steamid, name )
+-- Basic table.HasValue pointer checks are insufficient when checking a table of
+-- tables, so this uses table.EqualValues instead.
+function table.HasTable(tbl, needle)
+   if not tbl then return end
 
-	-- First the old key
-	local oldkey = Format( "%s[%s]", GetUniqueID( steamid ), name )
-	sql.Query( "DELETE FROM playerpdata WHERE infoid = " .. SQLStr( oldkey ) )
-
-	-- Then the new key. util.SteamIDTo64 is not ideal, but nothing we can do about it now
-	local key = Format( "%s[%s]", util.SteamIDTo64( steamid ), name )
-	sql.Query( "DELETE FROM playerpdata WHERE infoid = " .. SQLStr( key ) )
-
+   for k, v in pairs(tbl) do
+      if v == needle then
+         return true
+      elseif table.EqualValues(v, needle) then
+         return true
+      end
+   end
+   return false
 end
 
---[[---------------------------------------------------------
-	Name: IsBinaryModuleInstalled( name )
-	Desc: Returns whether a binary module with the given name is present on disk
------------------------------------------------------------]]
-local suffix = ( { "osx64", "osx", "linux64", "linux", "win64", "win32" } )[
-	( system.IsWindows() and 4 or 0 )
-	+ ( system.IsLinux() and 2 or 0 )
-	+ ( jit.arch == "x86" and 1 or 0 )
-	+ 1
-]
-local fmt = "lua/bin/gm" .. ( ( CLIENT and !MENU_DLL ) and "cl" or "sv" ) .. "_%s_%s.dll"
-function util.IsBinaryModuleInstalled( name )
-	if ( !isstring( name ) ) then
-		error( "bad argument #1 to 'IsBinaryModuleInstalled' (string expected, got " .. type( name ) .. ")", 2 )
-	elseif ( #name == 0 ) then
-		error( "bad argument #1 to 'IsBinaryModuleInstalled' (string cannot be empty)", 2 )
-	end
+-- Returns copy of table with only specific keys copied
+function table.CopyKeys(tbl, keys)
+   if not (tbl and keys) then return end
 
-	if ( file.Exists( string.format( fmt, name, suffix ), "MOD" ) ) then
-		return true
-	end
+   local out = {}
+   local val = nil
+   for _, k in pairs(keys) do
+      val = tbl[k]
+      if istable(val) then
+         out[k] = table.Copy(val)
+      else
+         out[k] = val
+      end
+   end
+   return out
+end
 
-	-- Edge case - on Linux 32-bit x86-64 branch, linux32 is also supported as a suffix
-	if ( jit.versionnum != 20004 and jit.arch == "x86" and system.IsLinux() ) then
-		return file.Exists( string.format( fmt, name, "linux32" ), "MOD" )
-	end
+local gsub = string.gsub
+-- Simple string interpolation:
+-- string.Interp("{killer} killed {victim}", {killer = "Bob", victim = "Joe"})
+-- returns "Bob killed Joe"
+-- No spaces or special chars in parameter name, just alphanumerics.
+function string.Interp(str, tbl)
+   return gsub(str, '{(%w+)}', tbl)
+end
 
-	return false
+-- Short helper for input.LookupBinding, returns capitalised key or a default
+function Key(binding, default)
+   local b = input.LookupBinding(binding)
+   if not b then return default end
+
+   return string.upper(b)
+end
+
+local exp = math.exp
+-- Equivalent to ExponentialDecay from Source's mathlib.
+-- Convenient for falloff curves.
+function math.ExponentialDecay(halflife, dt)
+   -- ln(0.5) = -0.69..
+   return exp((-0.69314718 / halflife) * dt)
+end
+
+function Dev(level, ...)
+   if cvars and cvars.Number("developer", 0) >= level then
+      Msg("[TTT dev]")
+      -- table.concat does not tostring, derp
+
+      local params = {...}
+      for i=1,#params do
+         Msg(" " .. tostring(params[i]))
+      end
+
+      Msg("\n")
+   end
+end
+
+function IsPlayer(ent)
+   return ent and ent:IsValid() and ent:IsPlayer()
+end
+
+function IsRagdoll(ent)
+   return ent and ent:IsValid() and ent:GetClass() == "prop_ragdoll"
+end
+
+local band = bit.band
+function util.BitSet(val, bit)
+   return band(val, bit) == bit
+end
+
+if CLIENT then
+   local healthcolors = {
+      healthy = Color(0, 255, 0, 255),
+      hurt    = Color(170, 230, 10, 255),
+      wounded = Color(230, 215, 10, 255),
+      badwound= Color(255, 140, 0, 255),
+      death   = Color(255, 0, 0, 255)
+   };
+
+   function util.HealthToString(health, maxhealth)
+      maxhealth = maxhealth or 100
+
+      if health > maxhealth * 0.9 then
+         return "hp_healthy", healthcolors.healthy
+      elseif health > maxhealth * 0.7 then
+         return "hp_hurt", healthcolors.hurt
+      elseif health > maxhealth * 0.45 then
+         return "hp_wounded", healthcolors.wounded
+      elseif health > maxhealth * 0.2 then
+         return "hp_badwnd", healthcolors.badwound
+      else
+         return "hp_death", healthcolors.death
+      end
+   end
+
+   local karmacolors = {
+      max  = Color(255, 255, 255, 255),
+      high = Color(255, 240, 135, 255),
+      med  = Color(245, 220, 60, 255),
+      low  = Color(255, 180, 0, 255),
+      min  = Color(255, 130, 0, 255),
+   };
+
+   function util.KarmaToString(karma)
+      local maxkarma = GetGlobalInt("ttt_karma_max", 1000)
+
+      if karma > maxkarma * 0.89 then
+         return "karma_max", karmacolors.max
+      elseif karma > maxkarma * 0.8 then
+         return "karma_high", karmacolors.high
+      elseif karma > maxkarma * 0.65 then
+         return "karma_med", karmacolors.med
+      elseif karma > maxkarma * 0.5 then
+         return "karma_low", karmacolors.low
+      else
+         return "karma_min", karmacolors.min
+      end
+   end
+
+   function util.IncludeClientFile(file)
+      include(file)
+   end
+else
+   function util.IncludeClientFile(file)
+      AddCSLuaFile(file)
+   end
+end
+
+-- Like string.FormatTime but simpler (and working), always a string, no hour
+-- support
+function util.SimpleTime(seconds, fmt)
+	if not seconds then seconds = 0 end
+
+    local ms = (seconds - math.floor(seconds)) * 100
+    seconds = math.floor(seconds)
+    local s = seconds % 60
+    seconds = (seconds - s) / 60
+    local m = seconds % 60
+
+    return string.format(fmt, m, s, ms)
 end
