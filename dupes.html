@@ -1,89 +1,66 @@
-<html>
-<head>
 
-	<title>Creations</title>
+<div class="page" ng-controller="ControllerDupes">
 
-	<link rel="stylesheet" type="text/css" href="css/Workshop.css" />
-	<link rel="stylesheet" type="text/css" href="css/creations/Creations.css" />
+	<div style="position: absolute; left: 0px; top: 0px; bottom: 0px; right: 0px;">
 
-	<script type="text/javascript" src="js/lua.js"></script>
+		<workshopcontainer>
 
-	<script type="text/javascript" src="js/thirdparty/jquery.js"></script>
-	<script type="text/javascript" src="js/thirdparty/angular.js"></script>
-	<script type="text/javascript" src="js/thirdparty/angular-route.js"></script>
+			<workshopmessage ng-show="Loading" ng-Tranny="'dupes.loading'">...</workshopmessage>
+			<workshopmessage ng-show="( TotalResults == 0 || NumResults == 0 ) && !Loading" ng-Tranny="'dupes.none'">...</workshopmessage>
 
-	<script type="text/javascript" src="js/menu/WorkshopFiles.js"></script>
-	<script type="text/javascript" src="js/svc.Tranny.js"></script>
+			<workshopicon ng-hide="Loading" ng-repeat="file in Files" style="width: {{IconWidth|number:0}}px; height: {{IconHeight|number:0}}px">
 
-	<script type="text/javascript" src="js/creations/dupes.js"></script>
-	<script type="text/javascript" src="js/menu/common.js"></script>
-	<script type="text/javascript" src="js/menu/control.Dupes.js"></script>
+				<preview ng-hide="file.background == nil" style="width: {{IconMax|number:0}}px; height: {{IconMax|number:0}}px; margin-left: -{{IconMax*0.5|number:0}}px; margin-top: -{{IconMax*0.5|number:0}}px">
+					<img src='../{{file.background}}' style="width: {{IconMax|number:0}}px; height: {{IconMax|number:0}}px;"/>
+				</preview>
 
-	<script type="text/javascript" src="js/menu/TestWorkshop.js"></script>
+				<name>
+					<label ng-click="OpenWorkshopFile( file.id )">{{file.info.title || "Loading..."}}</label>
+				</name>
 
-</head>
+				<author ng-hide="file.local">{{file.info.ownername}}</author>
 
-<body ng-app="CDupesApp" ng-controller="CDupes" onresize="WindowResized()">
+				<votes ng-show="!file.local && (file.vote.up-file.vote.down) > 0" style="color: #4a4">+{{file.vote.up-file.vote.down|number:0}}</votes>
+				<votes ng-show="!file.local && (file.vote.up-file.vote.down) < 0" style="color: #a44">{{file.vote.up-file.vote.down|number:0}}</votes>
 
-	<div class="options">
+				<description>{{file.info.description}}</description>
 
-		<!-- DUPES -->
+				<controls>
 
-		<ul>
+					<left>
+					<!--
+						<control ng-hide="file.local || file.rated" ng-click="Rate( file, true )"><img src='img/thumb-up.png' /></control>
+						<control ng-hide="file.local || file.rated" ng-click="Rate( file, false )"><img src='img/thumb-down.png' /></control>
+					-->
+						<control ng-show="file.local" ng-click="PublishLocal( file )" ng-Tranny="'dupes.publish'">..</control>
+						<control ng-show="!file.local" ng-click="OpenWorkshopFile( file.id )" ng-Tranny="'dupes.commentandrate'">..</control>
 
-			<li class="headline" ng-tranny="'dupes'"></li>
-			<li class="subtitle"></li>
+					</left>
 
-			<li ng-repeat="cat in MyCategories" class="clickable {{IfElse( Category == cat, 'active', 'notactive' )}}">
-				<a ng-href='#/list/{{cat}}/' ng-Tranny="'dupes.'+cat" ng-show="cat != ''" class="{{IfElse( Category == cat, 'active', 'notactive' )}}"></a>
+					<right>
+						<control ng-click="ArmDupe( file )" ng-Tranny="'dupes.arm'">..</control>
+					</right>
 
-				<ul ng-show="cat == Category && cat != 'local'" style="margin-top: 4px; margin-bottom: 15px;">
-					<li ng-repeat="subcat in SubCategories" class="clickable {{IfElse( Tagged == subcat, 'active', 'notactive' )}}">
-						<a ng-href='#/list/{{cat}}/{{subcat}}/' ng-Tranny="'dupes.'+subcat" ng-show="cat != ''" class="{{IfElse( Tagged == subcat, 'active', 'notactive' )}}">{{subcat}}</a>
-					</li>
-				</ul>
-			</li>
+				</controls>
 
-			<li>&nbsp;</li>
+			</workshopicon>
 
-			<li ng-repeat="cat in Categories" class="clickable {{IfElse( Category == cat, 'active', 'notactive' )}}">
-				<a ng-href='#/list/{{cat}}/' ng-Tranny="'dupes.'+cat" ng-show="cat != ''" class="{{IfElse( Category == cat, 'active', 'notactive' )}}"></a>
+			<center>
+				<pagination ng-hide="Loading || TotalResults == 0">
 
-				<ul ng-show="cat == Category" style="margin-top: 4px; margin-bottom: 15px;">
-					<li ng-repeat="subcat in SubCategories" class="clickable {{IfElse( Tagged == subcat, 'active', 'notactive' )}}">
-						<a ng-href='#/list/{{cat}}/{{subcat}}/' ng-Tranny="'dupes.'+subcat" ng-show="cat != ''" class="{{IfElse( Tagged == subcat, 'active', 'notactive' )}}">{{subcat}}</a>
-					</li>
-				</ul>
-			</li>
+					<a class="back" ng-click="Go( PerPage * -1 )">&nbsp;</a>
+					<a class="next" ng-click="Go( PerPage * 1 )">&nbsp;</a>
 
-			<li>&nbsp;</li>
+					<div class="pages">
+						<span ng-repeat="p in Pages"><a class="{{IfElse( p == Page, 'active', '' )}} page" ng-click="GoToPage( p )"><img src='img/pagination_page.png?1' /></a></span><br>
+					</div>
+					<span class="pagenum">{{Page}}</span>
 
-			<li ng-repeat="cat in CategoriesSecondary" class="clickable {{IfElse( Category == cat, 'active', 'notactive' )}}">
-				<a ng-href='#/list/{{cat}}/' ng-Tranny="'dupes.'+cat" ng-show="cat != ''" class="{{IfElse( Category == cat, 'active', 'notactive' )}}"></a>
+				</pagination>
+			</center>
 
-				<ul ng-show="cat == Category" style="margin-top: 4px; margin-bottom: 15px;">
-					<li ng-repeat="subcat in SubCategories" class="clickable {{IfElse( Tagged == subcat, 'active', 'notactive' )}}">
-						<a ng-href='#/list/{{cat}}/{{subcat}}/' ng-Tranny="'dupes.'+subcat" ng-show="cat != ''" class="{{IfElse( Tagged == subcat, 'active', 'notactive' )}}">{{subcat}}</a>
-					</li>
-				</ul>
-			</li>
-
-			<li>&nbsp;</li>
-
-			<li><button ng-click="SaveDupe();" ng-tranny="'dupes.savedupe'" class="savedupebutton {{DupeDisabled}}" enabled="false">..</button></li>
-
-		</ul>
-
-		<!--
-		<input type="button" value="Reload Page" onClick="document.location.reload(true)">
-		-->
+		</workshopcontainer>
 
 	</div>
 
-	<div ng-view>
-
-	</div>
-
-</body>
-</html>
-
+</div>
