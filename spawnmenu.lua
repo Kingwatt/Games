@@ -1,311 +1,396 @@
 
-local spawnmenu_engine = spawnmenu
+local spawnmenu_border = CreateConVar( "spawnmenu_border", "0.1", { FCVAR_ARCHIVE }, "Amount of empty space around the Sandbox spawn menu." )
 
-module( "spawnmenu", package.seeall )
+include( "toolmenu.lua" )
+include( "contextmenu.lua" )
+include( "creationmenu.lua" )
 
-local g_ToolMenu = {}
-local CreationMenus = {}
-local PropTable = {}
-local PropTableCustom = {}
+local PANEL = {}
 
-local ActiveToolPanel = nil
-local ActiveSpawnlistID = 1000
+function PANEL:Init()
 
---[[---------------------------------------------------------
+	self:Dock( FILL )
 
-	Tool Tabs
+	self.HorizontalDivider = vgui.Create( "DHorizontalDivider", self )
+	self.HorizontalDivider:Dock( FILL )
+	self.HorizontalDivider:SetLeftWidth( ScrW() ) -- It will be automatically resized by DHorizontalDivider to account for GetRightMin/GetLeftMin
+	self.HorizontalDivider:SetDividerWidth( 6 )
+	self.HorizontalDivider:SetCookieName( "SpawnMenuDiv" )
+	self.HorizontalDivider:SetRightMin( 300 )
+	if ( ScrW() >= 1024 ) then self.HorizontalDivider:SetRightMin( 460 ) end
 
------------------------------------------------------------]]
+	self.ToolMenu = vgui.Create( "ToolMenu", self.HorizontalDivider )
+	self.HorizontalDivider:SetRight( self.ToolMenu )
 
-function SetActiveControlPanel( pnl )
-	ActiveToolPanel = pnl
-end
+	self.CreateMenu = vgui.Create( "CreationMenu", self.HorizontalDivider )
+	self.HorizontalDivider:SetLeft( self.CreateMenu )
 
-function ActiveControlPanel()
-	return ActiveToolPanel
-end
+	self.m_bHangOpen = false
 
-function GetTools()
-	return g_ToolMenu
-end
+	self:SetMouseInputEnabled( true )
 
-function GetToolMenu( name, label, icon )
+	self.ToolToggle = vgui.Create( "DImageButton", self )
+	self.ToolToggle:SetImage( "gui/spawnmenu_toggle" )
+	self.ToolToggle:SetSize( 16, 16 )
+	self.ToolToggle.DoClick = function()
 
-	--
-	-- This is a dirty hack so that Main stays at the front of the tabs.
-	--
-	if ( name == "Main" ) then name = "AAAAAAA_Main" end
+		self.ToolMenu:SetVisible( !self.ToolMenu:IsVisible() )
+		self:InvalidateLayout()
 
-	label = label or name
-	icon = icon or "icon16/wrench.png"
-
-	for k, v in ipairs( g_ToolMenu ) do
-
-		if ( v.Name == name ) then return v.Items end
-
-	end
-
-	local NewMenu = { Name = name, Items = {}, Label = label, Icon = icon }
-	table.insert( g_ToolMenu, NewMenu )
-
-	--
-	-- Order the tabs by NAME
-	--
-	table.SortByMember( g_ToolMenu, "Name", true )
-
-	return NewMenu.Items
-
-end
-
-function ClearToolMenus()
-
-	g_ToolMenu = {}
-
-end
-
-function AddToolTab( strName, strLabel, Icon )
-
-	GetToolMenu( strName, strLabel, Icon )
-
-end
-
-function SwitchToolTab( id )
-
-	local Tab = g_SpawnMenu:GetToolMenu():GetToolPanel( id )
-	if ( !IsValid( Tab ) or !IsValid( Tab.PropertySheetTab ) ) then return end
-
-	Tab.PropertySheetTab:DoClick()
-
-end
-
-function ActivateToolPanel( tabId, ctrlPnl, toolName )
-
-	local Tab = g_SpawnMenu:GetToolMenu():GetToolPanel( tabId )
-	if ( !IsValid( Tab ) ) then return end
-
-	spawnmenu.SetActiveControlPanel( ctrlPnl )
-
-	if ( ctrlPnl ) then
-		Tab:SetActive( ctrlPnl )
-	end
-
-	SwitchToolTab( tabId )
-
-	if ( toolName && Tab.SetActiveToolText ) then
-		Tab:SetActiveToolText( toolName )
-	end
-
-end
-
--- While technically tool class names CAN be duplicate, it normally should never happen.
-function ActivateTool( strName, noCommand )
-
-	-- I really don't like this triple loop
-	for tab, v in ipairs( g_ToolMenu ) do
-		for _, items in pairs( v.Items ) do
-			for _, item in pairs( items ) do
-
-				if ( istable( item ) && item.ItemName && item.ItemName == strName ) then
-
-					if ( !noCommand && item.Command && string.len( item.Command ) > 1 ) then
-						RunConsoleCommand( unpack( string.Explode( " ", item.Command ) ) )
-					end
-
-					local cp = controlpanel.Get( strName )
-					if ( !cp:GetInitialized() ) then
-						cp:FillViaTable( { Text = item.Text, ControlPanelBuildFunction = item.CPanelFunction } )
-					end
-
-					ActivateToolPanel( tab, cp, strName )
-
-					return
-
-				end
-
-			end
+		if ( self.ToolMenu:IsVisible() ) then
+			self.ToolToggle:SetImage( "gui/spawnmenu_toggle" )
+			self.CreateMenu:Dock( NODOCK ) -- What an ugly hack
+			self.HorizontalDivider:SetRight( self.ToolMenu )
+			self.HorizontalDivider:SetLeft( self.CreateMenu )
+		else
+			self.ToolToggle:SetImage( "gui/spawnmenu_toggle_back" )
+			self.HorizontalDivider:SetRight( nil ) -- What an ugly hack
+			self.HorizontalDivider:SetLeft( nil )
+			self.CreateMenu:SetParent( self.HorizontalDivider )
+			self.CreateMenu:Dock( FILL )
 		end
+
 	end
 
 end
 
-function AddToolCategory( tab, RealName, PrintName )
+function PANEL:OpenCreationMenuTab( name )
 
-	local Menu = GetToolMenu( tab )
-
-	-- Does this category already exist?
-	for k, v in ipairs( Menu ) do
-
-		if ( v.Text == PrintName ) then return end
-		if ( v.ItemName == RealName ) then return end
-
-	end
-
-	table.insert( Menu, { Text = PrintName, ItemName = RealName } )
+	self.CreateMenu:SwitchToName( name )
 
 end
 
-function AddToolMenuOption( tab, category, itemname, text, command, controls, cpanelfunction, TheTable )
+function PANEL:GetToolMenu()
 
-	local Menu = GetToolMenu( tab )
-	local CategoryTable = nil
+	return self.ToolMenu
 
-	for k, v in ipairs( Menu ) do
-		if ( v.ItemName && v.ItemName == category ) then CategoryTable = v break end
-	end
+end
 
-	-- No table found.. lets create one
-	if ( !CategoryTable ) then
-		CategoryTable = { Text = "#" .. category, ItemName = category }
-		table.insert( Menu, CategoryTable )
-	end
+function PANEL:GetCreationMenu()
 
-	TheTable = TheTable or {}
-
-	TheTable.ItemName = itemname
-	TheTable.Text = text
-	TheTable.Command = command
-	TheTable.Controls = controls
-	TheTable.CPanelFunction = cpanelfunction
-
-	table.insert( CategoryTable, TheTable )
-
-	-- Keep the table sorted
-	table.SortByMember( CategoryTable, "Text", true )
+	return self.CreateMenu
 
 end
 
 --[[---------------------------------------------------------
-
-	Creation Tabs
-
+	Name: OnClick
 -----------------------------------------------------------]]
-function AddCreationTab( strName, pFunction, pMaterial, iOrder, strTooltip )
+function PANEL:OnMousePressed()
 
-	iOrder = iOrder or 1000
-
-	pMaterial = pMaterial or "icon16/exclamation.png"
-
-	CreationMenus[ strName ] = { Function = pFunction, Icon = pMaterial, Order = iOrder, Tooltip = strTooltip }
-
-end
-
-function GetCreationTabs()
-
-	return CreationMenus
-
-end
-
-function SwitchCreationTab( id )
-
-	local tab = g_SpawnMenu:GetCreationMenu():GetCreationTab( id )
-	if ( !tab or !IsValid( tab.Tab ) ) then return end
-
-	tab.Tab:DoClick()
+	self:Close()
 
 end
 
 --[[---------------------------------------------------------
-
-	Spawn lists
-
+	Name: HangOpen
 -----------------------------------------------------------]]
-function GetPropTable()
+function PANEL:HangOpen( bHang )
 
-	return PropTable
-
-end
-
-function GetCustomPropTable()
-
-	return PropTableCustom
+	self.m_bHangOpen = bHang
 
 end
 
-function AddPropCategory( strFilename, strName, tabContents, icon, id, parentid, needsapp )
+--[[---------------------------------------------------------
+	Name: HangingOpen
+-----------------------------------------------------------]]
+function PANEL:HangingOpen()
 
-	PropTableCustom[ strFilename ] = {
-		name = strName,
-		contents = tabContents,
-		icon = icon,
-		id = id or ActiveSpawnlistID,
-		parentid = parentid or 0,
-		needsapp = needsapp
-	}
-
-	if ( !id ) then ActiveSpawnlistID = ActiveSpawnlistID + 1 end
+	return self.m_bHangOpen
 
 end
 
--- Populate the spawnmenu from the text files (engine)
-function PopulateFromEngineTextFiles()
+--[[---------------------------------------------------------
+	Name: Paint
+-----------------------------------------------------------]]
+function PANEL:Open()
 
-	-- Reset the already loaded prop list before loading them again.
-	-- This caused the spawnlists to duplicate into crazy trees when spawnmenu_reload'ing after saving edited spawnlists
-	PropTable = {}
+	RestoreCursorPosition()
 
-	spawnmenu_engine.PopulateFromTextFiles( function( strFilename, strName, tabContents, icon, id, parentid, needsapp )
-		PropTable[ strFilename ] = {
-			name = strName,
-			contents = tabContents,
-			icon = icon,
-			id = id,
-			parentid = parentid or 0,
-			needsapp = needsapp
-		}
-	end )
+	self.m_bHangOpen = false
 
-end
+	-- If the context menu is open, try to close it..
+	if ( IsValid( g_ContextMenu ) && g_ContextMenu:IsVisible() ) then
+		g_ContextMenu:Close()
+	end
 
--- Save the spawnfists to text files (engine)
-function DoSaveToTextFiles( props )
+	if ( self:IsVisible() ) then return end
 
-	spawnmenu_engine.SaveToTextFiles( props )
+	CloseDermaMenus()
 
-end
+	self:MakePopup()
+	self:SetVisible( true )
+	self:SetKeyboardInputEnabled( false )
+	self:SetMouseInputEnabled( true )
+	self:SetAlpha( 255 )
 
---[[
+	achievements.SpawnMenuOpen()
 
-Content Providers
-
-Functions that populate the spawnmenu from the spawnmenu txt files.
-
-function MyFunction( ContentPanel, ObjectTable )
-
-	local myspawnicon = CreateSpawnicon( ObjectTable.model )
-	ContentPanel:AddItem( myspawnicon )
+	if ( IsValid( self.StartupTool ) && self.StartupTool.Name ) then
+		self.StartupTool:SetSelected( true )
+		spawnmenu.ActivateTool( self.StartupTool.Name, true )
+		self.StartupTool = nil
+	end
 
 end
 
-spawnmenu.AddContentType( "model", MyFunction )
+--[[---------------------------------------------------------
+	Name: Paint
+-----------------------------------------------------------]]
+function PANEL:Close()
 
---]]
-
-local cp = {}
-
-function AddContentType( name, func )
-	cp[ name ] = func
-end
-
-function GetContentType( name )
-
-	if ( !name ) then
-		ErrorNoHaltWithStack( "spawnmenu.GetContentType got an invalid value\n" )
+	if ( self.m_bHangOpen ) then
+		self.m_bHangOpen = false
 		return
 	end
 
-	if ( !cp[ name ] ) then
+	if ( self:IsVisible() ) then RememberCursorPosition() end
 
-		cp[ name ] = function() end
-		Msg( "spawnmenu.GetContentType( ", name, " ) - not found!\n" )
+	CloseDermaMenus()
 
+	self:SetKeyboardInputEnabled( false )
+	self:SetMouseInputEnabled( false )
+	self:SetVisible( false )
+
+end
+
+function PANEL:PerformLayout()
+
+	local MarginX = math.Clamp( ( ScrW() - 1024 ) * spawnmenu_border:GetFloat(), 25, 256 )
+	local MarginY = math.Clamp( ( ScrH() - 768 ) * spawnmenu_border:GetFloat(), 25, 256 )
+
+	-- At this size we can't spare any space for emptiness
+	if ( ScrW() < 1024 || ScrH() < 768 ) then
+		MarginX = 0
+		MarginY = 0
 	end
 
-	return cp[ name ]
+	self:DockPadding( 0, 0, 0, 0 )
+	self.HorizontalDivider:DockMargin( MarginX, MarginY, MarginX, MarginY )
+	self.HorizontalDivider:SetLeftMin( self.HorizontalDivider:GetWide() / 3 )
+
+	self.ToolToggle:AlignRight( 6 )
+	self.ToolToggle:AlignTop( 6 )
+
 end
 
-function CreateContentIcon( type, parent, tbl )
+function PANEL:StartKeyFocus( pPanel )
 
-	local ctrlpnl = GetContentType( type )
-	if ( ctrlpnl ) then return ctrlpnl( parent, tbl ) end
+	self.m_pKeyFocus = pPanel
+	self:SetKeyboardInputEnabled( true )
+	self:HangOpen( true )
 
 end
+
+function PANEL:EndKeyFocus( pPanel )
+
+	if ( self.m_pKeyFocus != pPanel ) then return end
+	self:SetKeyboardInputEnabled( false )
+
+end
+
+function PANEL:OnSizeChanged( newW, newH )
+	local divW = self.HorizontalDivider:GetWide()
+	local divL = self.HorizontalDivider:GetLeftWidth()
+	self:InvalidateLayout( true )
+	local divWnew = self.HorizontalDivider:GetWide()
+
+	if ( divW > divL && divW < divWnew ) then
+		local ratio = divL / divW
+		self.HorizontalDivider:SetLeftWidth( ratio * divWnew )
+	end
+end
+
+vgui.Register( "SpawnMenu", PANEL, "EditablePanel" )
+
+--[[---------------------------------------------------------
+	Called to create the spawn menu..
+-----------------------------------------------------------]]
+local function CreateSpawnMenu()
+
+	if ( !hook.Run( "SpawnMenuEnabled" ) ) then return end
+
+	-- If we have an old spawn menu remove it.
+	if ( IsValid( g_SpawnMenu ) ) then
+		g_SpawnMenu:Remove()
+		g_SpawnMenu = nil
+	end
+
+	hook.Run( "PreReloadToolsMenu" )
+
+	-- Start Fresh
+	spawnmenu.ClearToolMenus()
+
+	-- Add defaults for the gamemode. In sandbox these defaults
+	-- are the Main/Postprocessing/Options tabs.
+	-- They're added first in sandbox so they're always first
+	hook.Run( "AddGamemodeToolMenuTabs" )
+
+	-- Use this hook to add your custom tools
+	-- This ensures that the default tabs are always
+	-- first.
+	hook.Run( "AddToolMenuTabs" )
+
+	-- Use this hook to add your custom tools
+	-- We add the gamemode tool menu categories first
+	-- to ensure they're always at the top.
+	hook.Run( "AddGamemodeToolMenuCategories" )
+	hook.Run( "AddToolMenuCategories" )
+
+	-- Add the tabs to the tool menu before trying
+	-- to populate them with tools.
+	hook.Run( "PopulateToolMenu" )
+
+	g_SpawnMenu = vgui.Create( "SpawnMenu" )
+
+	if ( IsValid( g_SpawnMenu ) ) then
+		g_SpawnMenu:SetVisible( false )
+		hook.Run( "SpawnMenuCreated", g_SpawnMenu )
+	end
+
+	CreateContextMenu()
+
+	hook.Run( "PostReloadToolsMenu" )
+
+end
+-- Hook to create the spawnmenu at the appropriate time (when all sents and sweps are loaded)
+hook.Add( "OnGamemodeLoaded", "CreateSpawnMenu", CreateSpawnMenu )
+concommand.Add( "spawnmenu_reload", CreateSpawnMenu )
+
+function GM:OnSpawnMenuOpen()
+
+	-- Let the gamemode decide whether we should open or not..
+	if ( !hook.Call( "SpawnMenuOpen", self ) ) then return end
+
+	if ( IsValid( g_SpawnMenu ) ) then
+		g_SpawnMenu:Open()
+		menubar.ParentTo( g_SpawnMenu )
+	end
+
+	hook.Call( "SpawnMenuOpened", self )
+
+end
+
+function GM:OnSpawnMenuClose()
+
+	if ( IsValid( g_SpawnMenu ) ) then g_SpawnMenu:Close() end
+	hook.Call( "SpawnMenuClosed", self )
+
+end
+
+--[[---------------------------------------------------------
+	Name: HOOK SpawnMenuKeyboardFocusOn
+		Called when text entry needs keyboard focus
+-----------------------------------------------------------]]
+local function SpawnMenuKeyboardFocusOn( pnl )
+
+	if ( IsValid( g_SpawnMenu ) && IsValid( pnl ) && pnl:HasParent( g_SpawnMenu ) ) then
+		g_SpawnMenu:StartKeyFocus( pnl )
+	end
+	if ( IsValid( g_ContextMenu ) && IsValid( pnl ) && pnl:HasParent( g_ContextMenu ) ) then
+		g_ContextMenu:StartKeyFocus( pnl )
+	end
+
+end
+hook.Add( "OnTextEntryGetFocus", "SpawnMenuKeyboardFocusOn", SpawnMenuKeyboardFocusOn )
+
+--[[---------------------------------------------------------
+	Name: HOOK SpawnMenuKeyboardFocusOff
+		Called when text entry stops needing keyboard focus
+-----------------------------------------------------------]]
+local function SpawnMenuKeyboardFocusOff( pnl )
+
+	if ( IsValid( g_SpawnMenu ) && IsValid( pnl ) && pnl:HasParent( g_SpawnMenu ) ) then
+		g_SpawnMenu:EndKeyFocus( pnl )
+	end
+
+	if ( IsValid( g_ContextMenu ) && IsValid( pnl ) && pnl:HasParent( g_ContextMenu ) ) then
+		g_ContextMenu:EndKeyFocus( pnl )
+	end
+
+end
+hook.Add( "OnTextEntryLoseFocus", "SpawnMenuKeyboardFocusOff", SpawnMenuKeyboardFocusOff )
+
+--[[---------------------------------------------------------
+	Name: HOOK SpawnMenuOpenGUIMousePressed
+		Don't do context screen clicking if spawnmenu is open
+-----------------------------------------------------------]]
+local function SpawnMenuOpenGUIMousePressed()
+
+	if ( !IsValid( g_SpawnMenu ) ) then return end
+	if ( !g_SpawnMenu:IsVisible() ) then return end
+
+	return true
+
+end
+hook.Add( "GUIMousePressed", "SpawnMenuOpenGUIMousePressed", SpawnMenuOpenGUIMousePressed )
+
+--[[---------------------------------------------------------
+	Name: HOOK SpawnMenuOpenGUIMousePressed
+		Close spawnmenu if it's open
+-----------------------------------------------------------]]
+local function SpawnMenuOpenGUIMouseReleased()
+
+	if ( !IsValid( g_SpawnMenu ) ) then return end
+	if ( !g_SpawnMenu:IsVisible() ) then return end
+
+	g_SpawnMenu:Close()
+
+	return true
+
+end
+
+hook.Add( "GUIMouseReleased", "SpawnMenuOpenGUIMouseReleased", SpawnMenuOpenGUIMouseReleased )
+
+--[[---------------------------------------------------------
+	Handle spawn menu language switching
+
+	- The spawn menu needs to be recreated ("refreshed") after a language switch
+
+	- We SHOULDN'T refresh it if the user has unsaved changes to their spawn list (these would be lost!)
+	- We SHOULDN'T refresh it if the user has the spawn menu open (that would be bad user experience)
+	- But, we SHOULD refresh it if the user saves or reverts any changes and closes the spawn menu
+
+	- What if the user switches BACK to the original language they were using? Surely, a refresh is not needed now?
+		- No, in this case we should still refresh the spawn menu because some text and labels do actually update during use of the spawn menu and might be left "dirty"
+-----------------------------------------------------------]]
+local function SpawnMenuLanguageChanged()
+	if ( !IsValid( g_SpawnMenu ) ) then return end
+
+	if ( g_SpawnMenu.m_UnsavedModifications || g_SpawnMenu:IsVisible() ) then
+		-- If there are unsaved modifications, or the spawn menu is somehow open, mark the spawn menu for recreation when the opportunity arises
+		g_SpawnMenu.m_NeedsLanguageRefresh = true
+	else
+		-- If there are no unsaved modifications, and the spawn menu isn't open, we can go ahead and safely refresh the spawn menu
+		CreateSpawnMenu()
+	end
+end
+-- When gmod_language changes, call SpawnMenuLanguageChanged
+cvars.AddChangeCallback( "gmod_language", SpawnMenuLanguageChanged, "spawnmenu_reload" )
+
+local function ProtectSpawnMenuChanges()
+	if ( !IsValid( g_SpawnMenu ) ) then return end
+
+	-- Mark the spawn menu as having unsaved modifications
+	g_SpawnMenu.m_UnsavedModifications = true
+end
+hook.Add( "SpawnlistContentChanged", "ProtectSpawnMenuChanges", ProtectSpawnMenuChanges )
+
+local function SpawnMenuChangesFinished()
+	if ( !IsValid( g_SpawnMenu ) ) then return end
+
+	-- Mark the spawn menu as no longer having unsaved modifications
+	g_SpawnMenu.m_UnsavedModifications = nil
+end
+hook.Add( "OnRevertSpawnlist", "SpawnMenuChangesFinished", SpawnMenuChangesFinished )
+hook.Add( "OnSaveSpawnlist", "SpawnMenuChangesFinished", SpawnMenuChangesFinished )
+
+local function SpawnMenuLanguageRefresh()
+	if ( !IsValid( g_SpawnMenu ) ) then return end
+
+	-- When the spawn menu is closed, check if it needs a language refresh. If it has no unsaved modifications, refresh it!
+	if ( !g_SpawnMenu.m_UnsavedModifications && g_SpawnMenu.m_NeedsLanguageRefresh ) then
+		g_SpawnMenu.m_NeedsLanguageRefresh = nil
+		CreateSpawnMenu()
+	end
+end
+hook.Add( "OnSpawnMenuClose", "SpawnMenuLanguageRefresh", SpawnMenuLanguageRefresh )

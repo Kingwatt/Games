@@ -1,185 +1,163 @@
 
-module( "weapons", package.seeall )
+local function BuildWeaponCategories()
+	local weapons = list.Get( "Weapon" )
+	local Categorised = {}
 
-local WeaponList = {}
+	-- Build into categories
+	for _, weapon in pairs( weapons ) do
 
---[[---------------------------------------------------------
-	Name: TableInherit( t, base )
-	Desc: Copies any missing data from base to t
------------------------------------------------------------]]
-local function TableInherit( t, base )
+		if ( !weapon.Spawnable ) then continue end
 
-	for k, v in pairs( base ) do
+		local Category = language.GetPhrase( weapon.Category or "#spawnmenu.category.other" )
+		if ( !isstring( Category ) ) then Category = tostring( Category ) end
 
-		if ( t[ k ] == nil ) then
-			t[ k ] = v
-		elseif ( k != "BaseClass" && istable( t[ k ] ) && istable( v ) ) then
-			TableInherit( t[ k ], v )
-		end
+		Categorised[ Category ] = Categorised[ Category ] or {}
+		table.insert( Categorised[ Category ], weapon )
 
 	end
 
-	t[ "BaseClass" ] = base
-
-	return t
-
+	return Categorised
 end
 
---[[---------------------------------------------------------
-	Name: IsBasedOn( name, base )
-	Desc: Checks if name is based on base
------------------------------------------------------------]]
-function IsBasedOn( name, base )
-	local t = GetStored( name )
-	if ( !t ) then return false end
-	if ( t.Base == name ) then return false end
-
-	if ( t.Base == base ) then return true end
-	return IsBasedOn( t.Base, base )
-end
-
-
---[[---------------------------------------------------------
-	Name: Register( table, string, bool )
-	Desc: Used to register your SWEP with the engine
------------------------------------------------------------]]
-function Register( t, name )
-
-	if ( hook.Run( "PreRegisterSWEP", t, name ) == false ) then return end
-
-	if ( isstring( t.ClassNameOverride ) ) then name = t.ClassNameOverride end
-
-	local old = WeaponList[ name ]
-	t.ClassName = name
-	WeaponList[ name ] = t
-
-	--baseclass.Set( name, t )
-
-	list.Set( "Weapon", name, {
-		ClassName = name,
-		PrintName = t.PrintName or name,
-		Category = t.Category or "#spawnmenu.category.other",
-		Spawnable = t.Spawnable,
-		AdminOnly = t.AdminOnly,
-		ScriptedEntityType = t.ScriptedEntityType,
-		IconOverride = t.IconOverride
+local function AddWeaponToCategory( propPanel, ent )
+	return spawnmenu.CreateContentIcon( ent.ScriptedEntityType or "weapon", propPanel, {
+		nicename	= ent.PrintName or ent.ClassName,
+		spawnname	= ent.ClassName,
+		material	= ent.IconOverride or ( "entities/" .. ent.ClassName .. ".png" ),
+		admin		= ent.AdminOnly
 	} )
+end
 
-	-- Allow all SWEPS to be duplicated, unless specified
-	if ( !t.DisableDuplicator ) then
-		duplicator.Allow( name )
+local function AddCategory( tree, cat )
+	local CustomIcons = list.Get( "ContentCategoryIcons" )
+
+	-- Add a node to the tree
+	local node = tree:AddNode( cat, CustomIcons[ cat ] or "icon16/gun.png" )
+	tree.Categories[ cat ] = node
+
+	-- When we click on the node - populate it using this function
+	node.DoPopulate = function( self )
+
+		-- If we've already populated it - forget it.
+		if ( IsValid( self.PropPanel ) ) then return end
+
+		-- Create the container panel
+		self.PropPanel = vgui.Create( "ContentContainer", tree.pnlContent )
+		self.PropPanel:SetVisible( false )
+		self.PropPanel:SetTriggerSpawnlistChange( false )
+
+		local weps = BuildWeaponCategories()[ cat ]
+		if ( !weps ) then return end -- May no longer have any weapons due to autorefresh
+
+		for _, ent in SortedPairsByMemberValue( weps, "PrintName" ) do
+			AddWeaponToCategory( self.PropPanel, ent )
+		end
+
 	end
 
-	--
-	-- If we're reloading this entity class
-	-- then refresh all the existing entities.
-	--
-	if ( old != nil ) then
+	-- If we click on the node populate it and switch to it.
+	node.DoClick = function( self )
 
-		-- Update SWEP table of entities that are based on this SWEP
-		for _, e in ipairs( ents.GetAll() ) do
-			local class = e:GetClass()
+		self:DoPopulate()
+		tree.pnlContent:SwitchPanel( self.PropPanel )
 
-			if ( class == name ) then
-				--
-				-- Replace the contents with this entity table
-				--
-				table.Merge( e, t )
+	end
 
-				--
-				-- Call OnReloaded hook (if it has one)
-				--
-				if ( e.OnReloaded ) then
-					e:OnReloaded()
+	node.OnRemove = function( self )
+
+		if ( IsValid( self.PropPanel ) ) then self.PropPanel:Remove() end
+
+	end
+
+	return node
+end
+
+hook.Add( "PopulateWeapons", "AddWeaponContent", function( pnlContent, tree, browseNode )
+
+	-- Loop through the weapons and add them to the menu
+	local Categorised = BuildWeaponCategories()
+
+	-- Helper
+	tree.Categories = {}
+	tree.pnlContent = pnlContent
+
+	-- Loop through each category
+	for cat, weps in SortedPairs( Categorised ) do
+		AddCategory( tree, cat )
+	end
+
+	-- Select the first node
+	local FirstNode = tree:Root():GetChildNode( 0 )
+	if ( IsValid( FirstNode ) ) then FirstNode:InternalDoClick() end
+
+end )
+
+local function AutorefreshWeaponToSpawnmenu( weapon, name )
+
+	local swepTab = g_SpawnMenu.CreateMenu:GetCreationTab( "#spawnmenu.category.weapons" )
+	if ( !swepTab || !swepTab.ContentPanel || !IsValid( swepTab.Panel ) ) then return end
+
+	local tree = swepTab.ContentPanel.ContentNavBar.Tree
+	if ( !tree.Categories ) then return end
+
+	local newCategory = weapon.Category or "#spawnmenu.category.other"
+
+	-- Remove from previous category..
+	for cat, catPnl in pairs( tree.Categories ) do
+		if ( !IsValid( catPnl.PropPanel ) ) then continue end
+
+		for _, icon in pairs( catPnl.PropPanel.IconList:GetChildren() ) do
+			if ( icon:GetName() != "ContentIcon" ) then continue end
+
+			if ( icon:GetSpawnName() == name ) then
+
+				local added = false
+				if ( cat == newCategory ) then
+					-- We already have the new category, just readd the icon here
+					local newIcon = AddWeaponToCategory( catPnl.PropPanel, weapon )
+					newIcon:MoveToBefore( icon )
+					added = true
 				end
-			end
 
-			if ( IsBasedOn( class, name ) ) then
-				table.Merge( e, Get( class ) )
+				icon:Remove()
 
-				if ( e.OnReloaded ) then
-					e:OnReloaded()
-				end
+				if ( added ) then return end
 			end
 		end
 
+		-- Leave the empty categories, this only applies to devs anyway
 	end
 
-end
-
---
--- All scripts have been loaded...
---
-function OnLoaded()
-
-	--
-	-- Once all the scripts are loaded we can set up the baseclass
-	-- - we have to wait until they're all setup because load order
-	-- could cause some entities to load before their bases!
-	--
-	for k, v in pairs( WeaponList ) do
-
-		baseclass.Set( k, Get( k ) )
-
-	end
-
-end
-
---[[---------------------------------------------------------
-	Name: Get( string )
-	Desc: Get a weapon by name.
------------------------------------------------------------]]
-function Get( name, retval )
-
-	local Stored = GetStored( name )
-	if ( !Stored ) then return nil end
-
-	-- Create/copy a new table
-	local retval = retval or {}
-	for k, v in pairs( Stored ) do
-		if ( istable( v ) ) then
-			retval[ k ] = table.Copy( v )
-		else
-			retval[ k ] = v
+	-- Weapon changed category...
+	if ( IsValid( tree.Categories[ newCategory ] ) ) then
+		-- Only do this if it is already populated.
+		-- If not, the weapon will appear automatically when user clicks on the category
+		if ( IsValid( tree.Categories[ newCategory ].PropPanel ) ) then
+			-- Just append it to the end, heck with the order
+			AddWeaponToCategory( tree.Categories[ newCategory ].PropPanel, weapon )
 		end
-	end
-	retval.Base = retval.Base or "weapon_base"
-
-	-- If we're not derived from ourselves (a base weapon)
-	-- then derive from our 'Base' weapon.
-	if ( retval.Base != name ) then
-
-		local base = Get( retval.Base )
-
-		if ( !base ) then
-			Msg( "ERROR: Trying to derive weapon " .. tostring( name ) .. " from non existant SWEP " .. tostring( retval.Base ) .. "!\n" )
-		else
-			retval = TableInherit( retval, base )
-		end
-
+	else
+		AddCategory( tree, newCategory )
 	end
 
-	return retval
 end
 
---[[---------------------------------------------------------
-	Name: GetStored( string )
-	Desc: Gets the REAL weapon table, not a copy
------------------------------------------------------------]]
-function GetStored( name )
-	return WeaponList[ name ]
+local function OnPreRegisterSWEP( weapon, name )
+	if ( !weapon.Spawnable || !g_SpawnMenu ) then return end
+
+	-- Gotta wait for the next frame because this hook is called just before the weapon is registered
+	timer.Simple( 0, function() AutorefreshWeaponToSpawnmenu( weapon, name ) end )
 end
 
---[[---------------------------------------------------------
-	Name: GetList( string )
-	Desc: Get a list of all the registered SWEPs
------------------------------------------------------------]]
-function GetList()
-	local result = {}
 
-	for k, v in pairs( WeaponList ) do
-		table.insert( result, v )
-	end
+spawnmenu.AddCreationTab( "#spawnmenu.category.weapons", function()
 
-	return result
-end
+	local ctrl = vgui.Create( "SpawnmenuContentPanel" )
+	ctrl:EnableSearch( "weapons", "PopulateWeapons" )
+	ctrl:CallPopulateHook( "PopulateWeapons" )
+
+	hook.Add( "PreRegisterSWEP", "spawnmenu_reload_swep", OnPreRegisterSWEP )
+
+	return ctrl
+
+end, "icon16/gun.png", 10 )
