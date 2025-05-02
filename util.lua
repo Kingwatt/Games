@@ -1,519 +1,418 @@
 
---
--- Hack for debug.getregistry
---
-local meta = {}
-function meta.__index( self, key )
-	return FindMetaTable( key )
-end
-function meta.__newindex( self, key, value )
-	rawset( self, key, value )
-
-	if ( isstring( key ) and istable( value ) ) then
-		RegisterMetaTable( key, value )
-	end
-end
-
-local tbl = {}
-setmetatable( tbl, meta )
-function debug.getregistry() return tbl end
-
---
--- Seed the rand!
---
-math.randomseed( os.time() )
-
---
--- Alias string.Format to global Format
---
-Format = string.format
-
---
--- Send C the flags for any materials we want to create
---
-local C_Material = Material
-
-function Material( name, words )
-
-	if ( !words ) then return C_Material( name ) end
-
-	local str = (words:find("vertexlitgeneric") and "1" or "0")
-	str = str .. (words:find("nocull") and "1" or "0")
-	str = str .. (words:find("alphatest") and "1" or "0")
-	str = str .. (words:find("mips") and "1" or "0")
-	str = str .. (words:find("noclamp") and "1" or "0")
-	str = str .. (words:find("smooth") and "1" or "0")
-	str = str .. (words:find("ignorez") and "1" or "0")
-
-	return C_Material( name, str )
-
-end
-
---[[---------------------------------------------------------
-	IsTableOfEntitiesValid
------------------------------------------------------------]]
-function IsTableOfEntitiesValid( tab )
-
-	if ( !tab ) then return false end
-
-	for k, v in pairs( tab ) do
-		if ( !IsValid( v ) ) then return false end
-	end
-
-	return true
-
-end
-
---[[---------------------------------------------------------
-	Color related functions - they now have their own
-	metatable so better put them in their own separate
-	file
------------------------------------------------------------]]
-
-include( "util/color.lua" )
-
---[[---------------------------------------------------------
-	Prints a table to the console
------------------------------------------------------------]]
-function PrintTable( t, indent, done )
-	local Msg = Msg
-
-	done = done or {}
-	indent = indent or 0
-	local keys = table.GetKeys( t )
-
-	table.sort( keys, function( a, b )
-		if ( isnumber( a ) and isnumber( b ) ) then return a < b end
-		return tostring( a ) < tostring( b )
-	end )
-
-	done[ t ] = true
-
-	for i = 1, #keys do
-		local key = keys[ i ]
-		local value = t[ key ]
-		key = ( type( key ) == "string" ) and "[\"" .. key .. "\"]" || "[" .. tostring( key ) .. "]"
-		Msg( string.rep( "\t", indent ) )
-
-		if  ( istable( value ) and !done[ value ] ) then
-
-			done[ value ] = true
-			Msg( key, ":\n" )
-			PrintTable ( value, indent + 2, done )
-			done[ value ] = nil
-
-		else
-
-			Msg( key, "\t=\t", value, "\n" )
-
-		end
-
-	end
-
-end
-
---[[---------------------------------------------------------
-	Returns a random vector
------------------------------------------------------------]]
-function VectorRand( min, max )
-	min = min || -1
-	max = max || 1
-	return Vector( math.Rand( min, max ), math.Rand( min, max ), math.Rand( min, max ) )
-end
-
---[[---------------------------------------------------------
-	Returns a random angle
------------------------------------------------------------]]
-function AngleRand( min, max )
-	return Angle( math.Rand( min || -90, max || 90 ), math.Rand( min || -180, max || 180 ), math.Rand( min || -180, max || 180 ) )
-end
-
---[[---------------------------------------------------------
-	Returns a random color
------------------------------------------------------------]]
-function ColorRand( alpha )
-	if ( alpha ) then
-		return Color( math.random( 0, 255 ), math.random( 0, 255 ), math.random( 0, 255 ), math.random( 0, 255 ) )
-	end
-
-	return Color( math.random( 0, 255 ), math.random( 0, 255 ), math.random( 0, 255 ) )
-end
-
-
---[[---------------------------------------------------------
-	Convenience function to precache a sound
------------------------------------------------------------]]
-function Sound( name )
-	util.PrecacheSound( name )
-	return name
-end
-
---[[---------------------------------------------------------
-	Convenience function to precache a model
------------------------------------------------------------]]
-function Model( name )
-	util.PrecacheModel( name )
-	return name
-end
-
---[[---------------------------------------------------------
-	Convenience function to precache a particle
------------------------------------------------------------]]
-function Particle( name )
-	if ( CLIENT ) then
-		game.AddParticles( name )
-	end
-	return name
-end
-
--- Some nice globals so we don't keep creating objects for no reason
-vector_origin		= Vector( 0, 0, 0 )
-vector_up			= Vector( 0, 0, 1 )
-angle_zero			= Angle( 0, 0, 0 )
-
-color_white			= Color( 255, 255, 255, 255 )
-color_black			= Color( 0, 0, 0, 255 )
-color_transparent	= Color( 255, 255, 255, 0 )
-
---[[---------------------------------------------------------
-	Includes the file - and adds it so the CS file list
------------------------------------------------------------]]
-function IncludeCS( filename )
-	if ( SERVER ) then
-		AddCSLuaFile( filename )
-	end
-
-	return include( filename )
-end
-
--- Globals
-FORCE_STRING	= 1
-FORCE_NUMBER	= 2
-FORCE_BOOL		= 3
-FORCE_ANGLE		= 4
-FORCE_COLOR		= 5
-FORCE_VECTOR	= 6
-
---[[---------------------------------------------------------
-	AccessorFunc
-	Quickly make Get/Set accessor fuctions on the specified table
------------------------------------------------------------]]
-function AccessorFunc( tab, varname, name, iForce )
-
-	if ( !tab ) then debug.Trace() end
-
-	tab[ "Get" .. name ] = function( self ) return self[ varname ] end
-
-	if ( iForce == FORCE_STRING ) then
-		tab[ "Set" .. name ] = function( self, v ) self[ varname ] = tostring( v ) end
-	return end
-
-	if ( iForce == FORCE_NUMBER ) then
-		tab[ "Set" .. name ] = function( self, v ) self[ varname ] = tonumber( v ) end
-	return end
-
-	if ( iForce == FORCE_BOOL ) then
-		tab[ "Set" .. name ] = function( self, v ) self[ varname ] = tobool( v ) end
-	return end
-
-	if ( iForce == FORCE_ANGLE ) then
-		tab[ "Set" .. name ] = function( self, v ) self[ varname ] = Angle( v ) end
-	return end
-
-	if ( iForce == FORCE_COLOR ) then
-		tab[ "Set" .. name ] = function( self, v )
-			if ( type( v ) == "Vector" ) then self[ varname ] = v:ToColor()
-			else self[ varname ] = string.ToColor( tostring( v ) ) end
-		end
-	return end
-
-	if ( iForce == FORCE_VECTOR ) then
-		tab[ "Set" .. name ] = function( self, v )
-			if ( IsColor( v ) ) then self[ varname ] = v:ToVector()
-			else self[ varname ] = Vector( v ) end
-		end
-	return end
-
-	tab[ "Set" .. name ] = function( self, v ) self[ varname ] = v end
-
-end
-
---[[---------------------------------------------------------
-	Returns true if object is valid (is not nil and IsValid)
------------------------------------------------------------]]
-function IsValid( object )
-
-	if ( !object ) then return false end
-
-	local isvalid = object.IsValid
-	if ( !isvalid ) then return false end
-
-	return isvalid( object )
-
-end
-
---[[---------------------------------------------------------
-	Safely remove an entity
------------------------------------------------------------]]
-function SafeRemoveEntity( ent )
-
-	if ( !IsValid( ent ) || ent:IsPlayer() ) then return end
-
-	ent:Remove()
-
-end
-
---[[---------------------------------------------------------
-	Safely remove an entity (delayed)
------------------------------------------------------------]]
-function SafeRemoveEntityDelayed( ent, timedelay )
-
-	if ( !IsValid( ent ) || ent:IsPlayer() ) then return end
-
-	timer.Simple( timedelay, function() SafeRemoveEntity( ent ) end )
-
-end
-
---[[---------------------------------------------------------
-	Simple lerp
------------------------------------------------------------]]
-function Lerp( delta, from, to )
-
-	if ( delta > 1 ) then return to end
-	if ( delta < 0 ) then return from end
-
-	return from + ( to - from ) * delta
-
-end
-
---[[---------------------------------------------------------
-	Convert Var to Bool
------------------------------------------------------------]]
-function tobool( val )
-	if ( val == nil || val == false || val == 0 || val == "0" || val == "false" ) then return false end
-	return true
-end
-
---[[---------------------------------------------------------
-	Universal function to filter out crappy models by name
------------------------------------------------------------]]
-local UselessModels = {
-	"_gesture", "_anim", "_gst", "_pst", "_shd", "_ss", "_posture", "_anm",
-	"ghostanim","_paths", "_shared", "anim_", "gestures_", "shared_ragdoll_"
-}
-
-function IsUselessModel( modelname )
-
-	modelname = modelname:lower()
-
-	if ( !modelname:find( ".mdl", 1, true ) ) then return true end
-
-	for k, v in ipairs( UselessModels ) do
-		if ( modelname:find( v, 1, true ) ) then
-			return true
-		end
-	end
-
-	return false
-
-end
-
-UTIL_IsUselessModel = IsUselessModel
-
---[[---------------------------------------------------------
-	Given a number, returns the right 'th
------------------------------------------------------------]]
-local STNDRD_TBL = { "st", "nd", "rd" }
-function STNDRD( num )
-	num = num % 100
-	if ( num > 10 and num < 20 ) then
-		return "th"
-	end
-
-	return STNDRD_TBL[ num % 10 ] or "th"
-end
-
---[[---------------------------------------------------------
-	From Simple Gamemode Base (Rambo_9)
------------------------------------------------------------]]
-function TimedSin( freq, min, max, offset )
-	return math.sin( freq * math.tau * CurTime() + offset ) * ( max - min ) * 0.5 + min
-end
-
---[[---------------------------------------------------------
-	From Simple Gamemode Base (Rambo_9)
------------------------------------------------------------]]
-function TimedCos( freq, min, max, offset )
-	return math.cos( freq * math.tau * CurTime() + offset ) * ( max - min ) * 0.5 + min
-end
-
---[[---------------------------------------------------------
-	IsEnemyEntityName
------------------------------------------------------------]]
-local EnemyNames = {
-	-- Half-Life 1.
-	monster_alien_grunt = true, monster_nihilanth = true, monster_tentacle = true, monster_alien_slave = true,
-	monster_bigmomma = true, monster_bullchicken = true, monster_gargantua = true, monster_human_assassin = true,
-	monster_babycrab = true, monster_human_grunt = true, monster_cockroach = true, monster_houndeye = true,
-	monster_zombie = true, monster_headcrab = true, monster_alien_controller = true, monster_turret = true,
-	monster_miniturret = true, monster_sentry = true,
-
-	-- Half-Life 2.
-	npc_antlion = true, npc_antlionguard = true, npc_antlionguardian = true, npc_barnacle = true,
-	npc_breen = true, npc_clawscanner = true, npc_combine_s = true, npc_cscanner = true, npc_fastzombie = true,
-	npc_fastzombie_torso = true, npc_headcrab = true, npc_headcrab_fast = true, npc_headcrab_poison = true,
-	npc_hunter = true, npc_metropolice = true, npc_manhack = true, npc_poisonzombie = true, npc_strider = true,
-	npc_stalker = true, npc_zombie = true, npc_zombie_torso = true, npc_zombine = true, npc_combine_camera = true,
-	npc_turret_ceiling = true, npc_combinedropship = true, npc_combinegunship = true, npc_helicopter = true,
-	npc_turret_floor = true, npc_antlion_worker = true, npc_headcrab_black = true
-}
-
-function IsEnemyEntityName( victimtype )
-	return EnemyNames[ victimtype ] or false
-end
-
---[[---------------------------------------------------------
-	IsFriendEntityName
------------------------------------------------------------]]
-local FriendlyNames = {
-	-- Half-Life 1.
-	monster_scientist = true, monster_barney = true,
-
-	-- Half-Life 2.
-	npc_alyx = true, npc_barney = true, npc_citizen = true, npc_dog = true, npc_eli = true,
-	npc_fisherman = true, npc_gman = true, npc_kleiner = true, npc_magnusson = true,
-	npc_monk = true, npc_mossman = true, npc_odessa = true, npc_vortigaunt = true
-}
-
-function IsFriendEntityName( victimtype )
-	return FriendlyNames[ victimtype ] or false
-end
-
---[[---------------------------------------------------------
-	Is content mounted?
-		IsMounted( "cstrike" )
-		IsMounted( 4010 )
------------------------------------------------------------]]
-function IsMounted( name )
-
-	if ( name == "episodic" || name == "ep2" || name == "lostcoast" ) then
-		name = "hl2"
-	end
-
-	local games = engine.GetGames()
-
-	for k, v in pairs( games ) do
-
-		if ( !v.mounted ) then continue end
-
-		if ( v.depot == name ) then return true end
-		if ( v.folder == name ) then return true end
-
-	end
-
-	return false
-
-end
-
---[[---------------------------------------------------------
-	Replacement for C++'s iff ? aa : bb
------------------------------------------------------------]]
-function Either( iff, aa, bb )
-	if ( iff ) then return aa end
-	return bb
-end
-
---
--- You can use this function to add your own CLASS_ var.
--- Adding in this way will ensure your CLASS_ doesn't collide with another
---
--- ie Add_NPC_Class( "MY_CLASS" )
-
-function Add_NPC_Class( name )
-	_G[ name ] = NUM_AI_CLASSES
-	NUM_AI_CLASSES = NUM_AI_CLASSES + 1
-end
+-- Return if there's nothing to add on to
+if ( !util ) then return end
 
 if ( CLIENT ) then
-
-	--[[---------------------------------------------------------
-		Remember/Restore cursor position..
-		Clientside only
-		If you have a system where you hold a key to show the cursor
-		Call RememberCursorPosition when the key is released and call
-		RestoreCursorPosition to restore the cursor to where it was
-		when the key was released.
-		If you don't the cursor will appear in the middle of the screen
-	-----------------------------------------------------------]]
-	local StoredCursorPos = {}
-
-	function RememberCursorPosition()
-
-		local x, y = input.GetCursorPos()
-
-		-- If the cursor isn't visible it will return 0,0 ignore it.
-		if ( x == 0 and y == 0 ) then return end
-
-		StoredCursorPos.x, StoredCursorPos.y = x, y
-
-	end
-
-	function RestoreCursorPosition()
-
-		if ( !StoredCursorPos.x || !StoredCursorPos.y ) then return end
-		input.SetCursorPos( StoredCursorPos.x, StoredCursorPos.y )
-
-	end
-
+	include( "util/worldpicker.lua" )
 end
 
---
--- This is supposed to be clientside, but was exposed to both states for years due to a bug.
---
-function CreateClientConVar( name, default, shouldsave, userdata, helptext, min, max )
+--[[---------------------------------------------------------
+   Name:	IsValidPhysicsObject
+   Params:	<ent> <num>
+   Desc:	Returns true if physics object is valid, false if not
+-----------------------------------------------------------]]
+function util.IsValidPhysicsObject( ent, num )
 
-	local iFlags = 0
+	-- Make sure the entity is valid
+	if ( !ent or ( !ent:IsValid() and !ent:IsWorld() ) ) then return false end
 
-	if ( shouldsave || shouldsave == nil ) then
-		iFlags = bit.bor( iFlags, FCVAR_ARCHIVE )
-	end
+	-- This is to stop attaching to walking NPCs.
+	-- Although this is possible and `works', it can severly reduce the
+	-- performance of the server.. Plus they don't pay attention to constraints
+	-- anyway - so we're not really losing anything.
 
-	if ( userdata ) then
-		iFlags = bit.bor( iFlags, FCVAR_USERINFO )
-	end
+	local MoveType = ent:GetMoveType()
+	if ( !ent:IsWorld() and MoveType != MOVETYPE_VPHYSICS and !( ent:GetModel() and ent:GetModel():StartsWith( "*" ) ) ) then return false end
 
-	return CreateConVar( name, default, iFlags, helptext, min, max )
+	local Phys = ent:GetPhysicsObjectNum( num )
+	return IsValid( Phys )
 
 end
 
 --[[---------------------------------------------------------
-	Convar access functions
+	Name: GetPlayerTrace( ply, dir )
+	Desc: Returns a generic trace table for the player
+			(dir is optional, defaults to the player's aim)
 -----------------------------------------------------------]]
+function util.GetPlayerTrace( ply, dir )
 
-local ConVarCache = {}
+	dir = dir or ply:GetAimVector()
 
-function GetConVar( name )
-	local c = ConVarCache[ name ]
-	if ( !c ) then
-		c = GetConVar_Internal( name )
-		if ( !c ) then
-			return
+	local trace = {}
+
+	trace.start = ply:EyePos()
+	trace.endpos = trace.start + ( dir * ( 4096 * 8 ) )
+	trace.filter = ply
+
+	return trace
+
+end
+
+
+--[[---------------------------------------------------------
+	Name: QuickTrace( origin, offset, filter )
+	Desc: Quick trace
+-----------------------------------------------------------]]
+function util.QuickTrace( origin, dir, filter )
+
+	local trace = {}
+
+	trace.start = origin
+	trace.endpos = origin + dir
+	trace.filter = filter
+
+	return util.TraceLine( trace )
+
+end
+
+
+--[[---------------------------------------------------------
+	Name: tobool( in )
+	Desc: Turn variable into bool
+-----------------------------------------------------------]]
+util.tobool = tobool
+
+
+--[[---------------------------------------------------------
+	Name: LocalToWorld( ent, lpos, bone )
+	Desc: Convert the local position on an entity to world pos
+-----------------------------------------------------------]]
+function util.LocalToWorld( ent, lpos, bone )
+
+	bone = bone or 0
+	if ( ent:EntIndex() == 0 ) then
+		return lpos
+	else
+		if ( IsValid( ent:GetPhysicsObjectNum( bone ) ) ) then
+			return ent:GetPhysicsObjectNum( bone ):LocalToWorld( lpos )
+		else
+			return ent:LocalToWorld( lpos )
 		end
-
-		ConVarCache[ name ] = c
 	end
 
-	return c
+	return nil
+
 end
 
-function GetConVarNumber( name )
-	if ( name == "maxplayers" ) then return game.MaxPlayers() end -- Backwards compatibility
-	local c = GetConVar( name )
-	return ( c and c:GetFloat() ) or 0
+
+--[[---------------------------------------------------------
+	Returns year, month, day and hour, minute, second in a formatted string.
+-----------------------------------------------------------]]
+function util.DateStamp()
+
+	local t = os.date( '*t' )
+	return t.year .. "-" .. t.month .. "-" .. t.day .. " " .. Format( "%02i-%02i-%02i", t.hour, t.min, t.sec )
+
 end
 
-function GetConVarString( name )
-	if ( name == "maxplayers" ) then return tostring( game.MaxPlayers() ) end -- ew
-	local c = GetConVar( name )
-	return ( c and c:GetString() ) or ""
+--[[---------------------------------------------------------
+	Convert a string to a certain type
+-----------------------------------------------------------]]
+function util.StringToType( str, typename )
+
+	typename = typename:lower()
+
+	if ( typename == "vector" )	then return Vector( str ) end
+	if ( typename == "angle" )	then return Angle( str ) end
+	if ( typename == "float" || typename == "number" )	then return tonumber( str ) end
+	if ( typename == "int" )	then local v = tonumber( str ) return v and math.Round( v ) or nil end
+	if ( typename == "bool" || typename == "boolean" )	then return tobool( str ) end
+	if ( typename == "string" )	then return tostring( str ) end
+	if ( typename == "entity" )	then return Entity( str ) end
+
+	MsgN( "util.StringToType: unknown type \"", typename, "\"!" )
+
+end
+
+--
+-- Convert a type to a (nice, but still parsable) string
+--
+function util.TypeToString( v )
+
+	local iD = TypeID( v )
+
+	if ( iD == TYPE_VECTOR or iD == TYPE_ANGLE ) then
+		return string.format( "%.2f %.2f %.2f", v:Unpack() )
+	end
+
+	if ( iD == TYPE_NUMBER ) then
+		return util.NiceFloat( v )
+	end
+
+	return tostring( v )
+
+end
+
+
+--
+-- Formats a float by stripping off extra 0's and .'s
+--
+--	0.00	->		0
+--	0.10	->		0.1
+--	1.00	->		1
+--	1.49	->		1.49
+--	5.90	->		5.9
+--
+function util.NiceFloat( f )
+
+	local str = string.format( "%f", f )
+
+	str = str:TrimRight( "0" )
+	str = str:TrimRight( "." )
+
+	return str
+
+end
+
+
+
+--
+-- Timer
+--
+--
+local T =
+{
+	--
+	-- Resets the timer to nothing
+	--
+	Reset = function( self )
+
+		self.starttime = CurTime() - self.starttime
+		self.endtime = nil
+
+	end,
+
+	--
+	-- Starts the timer, call with end time
+	--
+	Start = function( self, time )
+
+		self.starttime = CurTime()
+		self.endtime = CurTime() + ( time or 0 )
+
+	end,
+
+	--
+	-- Returns true if the timer has been started
+	--
+	Started = function( self )
+
+		return self.endtime != nil
+
+	end,
+
+	--
+	-- Returns true if the time has elapsed
+	--
+	Elapsed = function( self )
+
+		return self.endtime == nil or self.endtime <= CurTime()
+
+	end,
+
+	--
+	-- Returns the amount of time that has passed since the Timer was started
+	--
+	GetElaspedTime = function( self )
+
+		return self:Started() and CurTime() - self.starttime or self.starttime
+
+	end
+}
+
+T.__index = T
+
+--
+-- Create a new timer object
+--
+function util.Timer( startdelay )
+
+	local t = {}
+	setmetatable( t, T )
+	t:Start( startdelay or 0 )
+	return t
+
+end
+
+local function PopStack( self, num )
+
+	if ( num == nil ) then
+		num = 1
+	elseif ( num < 0 ) then
+		error( string.format( "attempted to pop %d elements in stack, expected >= 0", num ), 3 )
+	else
+		num = math.floor( num )
+	end
+
+	local len = self[ 0 ]
+
+	if ( num > len ) then
+		error( string.format( "attempted to pop %u element%s in stack of length %u", num, num == 1 and "" or "s", len ), 3 )
+	end
+
+	return num, len
+
+end
+
+local STACK =
+{
+	Push = function( self, obj )
+		local len = self[ 0 ] + 1
+		self[ len ] = obj
+		self[ 0 ] = len
+	end,
+
+	Pop = function( self, num )
+		local len
+		num, len = PopStack( self, num )
+
+		if ( num == 0 ) then
+			return nil
+		end
+
+		local newlen = len - num
+		self[ 0 ] = newlen
+
+		newlen = newlen + 1
+		local ret = self[ newlen ]
+
+		-- Pop up to the last element
+		for i = len, newlen, -1 do
+			self[ i ] = nil
+		end
+
+		return ret
+	end,
+
+	PopMulti = function( self, num )
+		local len
+		num, len = PopStack( self, num )
+
+		if ( num == 0 ) then
+			return {}
+		end
+
+		local newlen = len - num
+		self[ 0 ] = newlen
+
+		local ret = {}
+		local retpos = 0
+
+		-- Pop each element and add it to the table
+		-- Iterate in reverse since the stack is internally stored
+		-- with 1 being the bottom element and len being the top
+		-- But the return will have 1 as the top element
+		for i = len, newlen + 1, -1 do
+			retpos = retpos + 1
+			ret[ retpos ] = self[ i ]
+
+			self[ i ] = nil
+		end
+
+		return ret
+	end,
+
+	Top = function( self )
+		local len = self[ 0 ]
+
+		if ( len == 0 ) then
+			return nil
+		end
+
+		return self[ len ]
+	end,
+
+	Size = function( self )
+		return self[ 0 ]
+	end
+}
+
+STACK.__index = STACK
+
+function util.Stack()
+	return setmetatable( { [ 0 ] = 0 }, STACK )
+end
+
+-- Helper for the following functions. This is not ideal but we cannot change this because it will break existing addons.
+local function GetUniqueID( sid )
+	return util.CRC( "gm_" .. sid .. "_gm" )
+end
+
+--[[---------------------------------------------------------
+	Name: GetPData( steamid, name, default )
+	Desc: Gets the persistant data from a player by steamid
+-----------------------------------------------------------]]
+function util.GetPData( steamid, name, default )
+
+	-- First try looking up using the new key
+	local key = Format( "%s[%s]", util.SteamIDTo64( steamid ), name )
+	local val = sql.QueryValue( "SELECT value FROM playerpdata WHERE infoid = " .. SQLStr( key ) .. " LIMIT 1" )
+	if ( val == nil ) then
+
+		-- Not found? Look using the old key
+		local oldkey = Format( "%s[%s]", GetUniqueID( steamid ), name )
+		val = sql.QueryValue( "SELECT value FROM playerpdata WHERE infoid = " .. SQLStr( oldkey ) .. " LIMIT 1" )
+		if ( val == nil ) then return default end
+
+	end
+
+	return val
+
+end
+
+--[[---------------------------------------------------------
+	Name: SetPData( steamid, name, value )
+	Desc: Sets the persistant data of a player by steamid
+-----------------------------------------------------------]]
+function util.SetPData( steamid, name, value )
+
+	local key = Format( "%s[%s]", util.SteamIDTo64( steamid ), name )
+	sql.Query( "REPLACE INTO playerpdata ( infoid, value ) VALUES ( " .. SQLStr( key ) .. ", " .. SQLStr( value ) .. " )" )
+
+end
+
+--[[---------------------------------------------------------
+	Name: RemovePData( steamid, name )
+	Desc: Removes the persistant data from a player by steamid
+-----------------------------------------------------------]]
+function util.RemovePData( steamid, name )
+
+	-- First the old key
+	local oldkey = Format( "%s[%s]", GetUniqueID( steamid ), name )
+	sql.Query( "DELETE FROM playerpdata WHERE infoid = " .. SQLStr( oldkey ) )
+
+	-- Then the new key. util.SteamIDTo64 is not ideal, but nothing we can do about it now
+	local key = Format( "%s[%s]", util.SteamIDTo64( steamid ), name )
+	sql.Query( "DELETE FROM playerpdata WHERE infoid = " .. SQLStr( key ) )
+
+end
+
+--[[---------------------------------------------------------
+	Name: IsBinaryModuleInstalled( name )
+	Desc: Returns whether a binary module with the given name is present on disk
+-----------------------------------------------------------]]
+local suffix = ( { "osx64", "osx", "linux64", "linux", "win64", "win32" } )[
+	( system.IsWindows() and 4 or 0 )
+	+ ( system.IsLinux() and 2 or 0 )
+	+ ( jit.arch == "x86" and 1 or 0 )
+	+ 1
+]
+local fmt = "lua/bin/gm" .. ( ( CLIENT and !MENU_DLL ) and "cl" or "sv" ) .. "_%s_%s.dll"
+function util.IsBinaryModuleInstalled( name )
+	if ( !isstring( name ) ) then
+		error( "bad argument #1 to 'IsBinaryModuleInstalled' (string expected, got " .. type( name ) .. ")", 2 )
+	elseif ( #name == 0 ) then
+		error( "bad argument #1 to 'IsBinaryModuleInstalled' (string cannot be empty)", 2 )
+	end
+
+	if ( file.Exists( string.format( fmt, name, suffix ), "MOD" ) ) then
+		return true
+	end
+
+	-- Edge case - on Linux 32-bit x86-64 branch, linux32 is also supported as a suffix
+	if ( jit.versionnum != 20004 and jit.arch == "x86" and system.IsLinux() ) then
+		return file.Exists( string.format( fmt, name, "linux32" ), "MOD" )
+	end
+
+	return false
 end

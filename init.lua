@@ -1,125 +1,121 @@
 
---[[---------------------------------------------------------
-	Non-Module includes
------------------------------------------------------------]]
+--
+-- The default font used by everything Derma
+--
 
-include ( "util.lua" )			-- Misc Utilities
-include ( "util/sql.lua" )		-- Include sql here so it's
-								-- available at loadtime to modules.
-							
-include( "extensions/net.lua" )
+if ( system.IsLinux() ) then
 
---[[---------------------------------------------------------
-	Shared Modules
------------------------------------------------------------]]
+	surface.CreateFont( "DermaDefault", {
+		font		= "DejaVu Sans",
+		size		= 14,
+		weight		= 500,
+		extended	= true
+	} )
 
-require ( "baseclass" )
-require ( "concommand" )		-- Console Commands
-require ( "saverestore" )		-- Save/Restore
-require ( "hook" )				-- Gamemode hooks
-require ( "gamemode" )			-- Gamemode manager
-require ( "weapons" )			-- SWEP manager
-require ( "scripted_ents" )		-- Scripted Entities
-require ( "player_manager" )	-- Player models/class manager
-require ( "numpad" )
-require ( "team" )
-require ( "undo" )
-require ( "cleanup" )
-require ( "duplicator" )
-require ( "constraint" )
-require ( "construct" )
-require ( "usermessage" )
-require ( "list" )
-require ( "cvars" )
-require ( "http" )
-require ( "properties" )
-require ( "widget" )
-require ( "cookie" )
-require ( "utf8" )
+	surface.CreateFont( "DermaDefaultBold", {
+		font		= "DejaVu Sans",
+		size		= 14,
+		weight		= 800,
+		extended	= true
+	} )
 
-require ( "drive" )
-include ( "drive/drive_base.lua" )
-include ( "drive/drive_noclip.lua" )
+else
 
---[[---------------------------------------------------------
-	Serverside only modules
------------------------------------------------------------]]
+	surface.CreateFont( "DermaDefault", {
+		font		= "Tahoma",
+		size		= 13,
+		weight		= 500,
+		extended	= true
+	} )
 
-if ( SERVER ) then
-
-	require( "ai_task" )
-	require( "ai_schedule" )
+	surface.CreateFont( "DermaDefaultBold", {
+		font		= "Tahoma",
+		size		= 13,
+		weight		= 800,
+		extended	= true
+	} )
 
 end
 
+surface.CreateFont( "DermaLarge", {
+	font		= "Roboto",
+	size		= 32,
+	weight		= 500,
+	extended	= true
+} )
 
---[[---------------------------------------------------------
-	Clientside only modules
------------------------------------------------------------]]
+include( "derma.lua" )
+include( "derma_example.lua" )
+include( "derma_menus.lua" )
+include( "derma_animation.lua" )
+include( "derma_utils.lua" )
+include( "derma_gwen.lua" )
 
-if ( CLIENT ) then
+function Derma_Hook( panel, functionname, hookname, typename )
 
-	require ( "draw" )			-- 2D Draw library
-	require ( "markup" )		-- Text markup library
-	require ( "effects" )
-	require ( "halo" )
-	require ( "killicon" )
-	require ( "spawnmenu" )
-	require ( "controlpanel" )
-	require ( "presets" )
-	require ( "menubar" )
-	require ( "matproxy" )
-
-	include( "util/model_database.lua" )	-- Store information on models as they're loaded
-	include( "util/vgui_showlayout.lua" ) 	-- VGUI Performance Debug
-	include( "util/tooltips.lua" )
-	include( "util/client.lua" )
-	include( "util/javascript_util.lua" )
-	include( "util/workshop_files.lua" )
-	include( "gui/icon_progress.lua" )
+	panel[ functionname ] = function ( self, a, b, c, d )
+		return derma.SkinHook( hookname, typename, self, a, b, c, d )
+	end
 
 end
 
+--[[
 
---[[---------------------------------------------------------
-	Shared modules
------------------------------------------------------------]]
-include( "gmsave.lua" )
+	ConVar Functions
 
---[[---------------------------------------------------------
-	Extensions
+	To associate controls with convars. The controls automatically
+	update from the value of the control, and automatically update
+	the value of the convar from the control.
 
-	Load extensions that we specifically need for the menu,
-	to reduce the chances of loading something that might
-	cause errors.
------------------------------------------------------------]]
+	Controls must:
 
-include ( "extensions/file.lua" )
-include ( "extensions/angle.lua" )
-include ( "extensions/debug.lua" )
-include ( "extensions/entity.lua" )
-include ( "extensions/ents.lua" )
-include ( "extensions/math.lua" )
-include ( "extensions/player.lua" )
-include ( "extensions/player_auth.lua" )
-include ( "extensions/string.lua" )
-include ( "extensions/table.lua" )
-include ( "extensions/util.lua" )
-include ( "extensions/vector.lua" )
-include ( "extensions/game.lua" )
-include ( "extensions/motionsensor.lua" )
-include ( "extensions/weapon.lua" )
-include ( "extensions/coroutine.lua" )
+	Call ConVarStringThink or ConVarNumberThink from the
+	Think function to get any changes from the ConVars.
 
-if ( CLIENT ) then
+	Have SetValue( value ) implemented, to receive the
+	value.
 
-	include ( "extensions/client/entity.lua" )
-	include ( "extensions/client/globals.lua" )
-	include ( "extensions/client/panel.lua" )
-	include ( "extensions/client/player.lua" )
-	include ( "extensions/client/render.lua" )
+--]]
 
-	require ( "search" )
+function Derma_Install_Convar_Functions( PANEL )
+
+	function PANEL:SetConVar( strConVar )
+		self.m_strConVar = strConVar
+	end
+
+	function PANEL:ConVarChanged( strNewValue )
+
+		if ( !self.m_strConVar || #self.m_strConVar < 2 ) then return end
+		RunConsoleCommand( self.m_strConVar, tostring( strNewValue ) )
+
+	end
+
+	-- Todo: Think only every 0.1 seconds?
+	function PANEL:ConVarStringThink()
+
+		if ( !self.m_strConVar || #self.m_strConVar < 2 ) then return end
+
+		local strValue = GetConVarString( self.m_strConVar )
+		if ( self.m_strConVarValue == strValue ) then return end
+
+		self.m_strConVarValue = strValue
+		self:SetValue( self.m_strConVarValue )
+
+	end
+
+	function PANEL:ConVarNumberThink()
+
+		if ( !self.m_strConVar || #self.m_strConVar < 2 ) then return end
+
+		local numValue = GetConVarNumber( self.m_strConVar )
+
+		-- In case the convar is a "nan"
+		if ( numValue != numValue ) then return end
+		if ( self.m_strConVarValue == numValue ) then return end
+
+		self.m_strConVarValue = numValue
+		self:SetValue( self.m_strConVarValue )
+
+	end
 
 end
-
