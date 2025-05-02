@@ -1,104 +1,137 @@
 
 AddCSLuaFile( "cl_init.lua" )
-AddCSLuaFile( "ai_translations.lua" )
-AddCSLuaFile( "sh_anim.lua" )
 AddCSLuaFile( "shared.lua" )
 
-include( "ai_translations.lua" )
-include( "sh_anim.lua" )
 include( "shared.lua" )
+include( "schedules.lua" )
+include( "tasks.lua" )
 
-SWEP.Weight			= 5		-- Decides whether we should switch from/to this
-SWEP.AutoSwitchTo	= true	-- Auto switch to if we pick it up
-SWEP.AutoSwitchFrom	= true	-- Auto switch from if you pick up a better weapon
+-- Variables
 
---[[---------------------------------------------------------
-	Name: OnRestore
-	Desc: The game has just been reloaded. This is usually the right place
-		to call the GetNW* functions to restore the script's values.
------------------------------------------------------------]]
-function SWEP:OnRestore()
-end
+ENT.m_fMaxYawSpeed = 200 -- Max turning speed
+ENT.m_iClass = CLASS_CITIZEN_REBEL -- NPC Class
 
---[[---------------------------------------------------------
-	Name: AcceptInput
-	Desc: Accepts input, return true to override/accept input
------------------------------------------------------------]]
-function SWEP:AcceptInput( name, activator, caller, data )
-	return false
-end
+AccessorFunc( ENT, "m_iClass", "NPCClass" )
+AccessorFunc( ENT, "m_fMaxYawSpeed", "MaxYawSpeed" )
 
---[[---------------------------------------------------------
-	Name: KeyValue
-	Desc: Called when a keyvalue is added to us
------------------------------------------------------------]]
-function SWEP:KeyValue( key, value )
-end
+function ENT:Initialize()
 
---[[---------------------------------------------------------
-	Name: Equip
-	Desc: A player or NPC has picked the weapon up
------------------------------------------------------------]]
-function SWEP:Equip( newOwner )
-end
+	-- Some default calls to make the NPC function
+	self:SetModel( "models/alyx.mdl" )
+	self:SetHullType( HULL_HUMAN )
+	self:SetHullSizeNormal()
+	self:SetSolid( SOLID_BBOX )
+	self:SetMoveType( MOVETYPE_STEP )
+	self:CapabilitiesAdd( bit.bor( CAP_MOVE_GROUND, CAP_OPEN_DOORS, CAP_ANIMATEDFACE, CAP_SQUAD, CAP_USE_WEAPONS, CAP_DUCK, CAP_MOVE_SHOOT, CAP_TURN_HEAD, CAP_USE_SHOT_REGULATOR, CAP_AIM_GUN ) )
 
---[[---------------------------------------------------------
-	Name: EquipAmmo
-	Desc: The player has picked up the weapon and has taken the ammo from it
-		The weapon will be removed immediately after this call.
------------------------------------------------------------]]
-function SWEP:EquipAmmo( newOwner )
-end
-
-
---[[---------------------------------------------------------
-	Name: OnDrop
-	Desc: Weapon was dropped
------------------------------------------------------------]]
-function SWEP:OnDrop()
-end
-
---[[---------------------------------------------------------
-	Name: ShouldDropOnDie
-	Desc: Should this weapon be dropped when its owner dies?
------------------------------------------------------------]]
-function SWEP:ShouldDropOnDie()
-	return true
-end
-
---[[---------------------------------------------------------
-	Name: GetCapabilities
-	Desc: For NPCs, returns what they should try to do with it.
------------------------------------------------------------]]
-function SWEP:GetCapabilities()
-
-	return CAP_WEAPON_RANGE_ATTACK1
+	self:SetHealth( 100 )
 
 end
 
 --[[---------------------------------------------------------
-	Name: NPCShoot_Secondary
-	Desc: NPC tried to fire secondary attack
+	Name: OnTakeDamage
+	Desc: Called when the NPC takes damage
 -----------------------------------------------------------]]
-function SWEP:NPCShoot_Secondary( shootPos, shootDir )
+function ENT:OnTakeDamage( dmginfo )
 
-	self:SecondaryAttack()
+--[[
+	Msg( tostring(dmginfo) .. "\n" )
+	Msg( "Inflictor:\t" .. tostring(dmginfo:GetInflictor()) .. "\n" )
+	Msg( "Attacker:\t" .. tostring(dmginfo:GetAttacker()) .. "\n" )
+	Msg( "Damage:\t" .. tostring(dmginfo:GetDamage()) .. "\n" )
+	Msg( "Base Damage:\t" .. tostring(dmginfo:GetBaseDamage()) .. "\n" )
+	Msg( "Force:\t" .. tostring(dmginfo:GetDamageForce()) .. "\n" )
+	Msg( "Position:\t" .. tostring(dmginfo:GetDamagePosition()) .. "\n" )
+	Msg( "Reported Pos:\t" .. tostring(dmginfo:GetReportedPosition()) .. "\n" ) -- ??
+--]]
+
+	-- return 1
+
+end
+
+
+
+--[[---------------------------------------------------------
+	Name: Use
+-----------------------------------------------------------]]
+function ENT:Use( activator, caller, type, value )
+end
+
+--[[---------------------------------------------------------
+	Name: StartTouch
+-----------------------------------------------------------]]
+function ENT:StartTouch( entity )
+end
+
+--[[---------------------------------------------------------
+	Name: EndTouch
+-----------------------------------------------------------]]
+function ENT:EndTouch( entity )
+end
+
+--[[---------------------------------------------------------
+	Name: Touch
+-----------------------------------------------------------]]
+function ENT:Touch( entity )
+end
+
+--[[---------------------------------------------------------
+	Name: GetRelationship
+		Return the relationship between this NPC and the
+		passed entity. If you don't return anything then
+		the default disposition will be used.
+-----------------------------------------------------------]]
+function ENT:GetRelationship( entity )
+
+	--return D_NU
 
 end
 
 --[[---------------------------------------------------------
-	Name: NPCShoot_Secondary
-	Desc: NPC tried to fire primary attack
+	Name: ExpressionFinished
+		Called when an expression has finished. Duh.
 -----------------------------------------------------------]]
-function SWEP:NPCShoot_Primary( shootPos, shootDir )
-
-	self:PrimaryAttack()
+function ENT:ExpressionFinished( strExp )
 
 end
 
--- These tell the NPC how to use the weapon
-AccessorFunc( SWEP, "fNPCMinBurst",		"NPCMinBurst" )
-AccessorFunc( SWEP, "fNPCMaxBurst",		"NPCMaxBurst" )
-AccessorFunc( SWEP, "fNPCFireRate",		"NPCFireRate" )
-AccessorFunc( SWEP, "fNPCMinRestTime",	"NPCMinRest" )
-AccessorFunc( SWEP, "fNPCMaxRestTime",	"NPCMaxRest" )
+--[[---------------------------------------------------------
+	Name: OnChangeActivity
+-----------------------------------------------------------]]
+function ENT:OnChangeActivity( act )
+
+end
+
+--[[---------------------------------------------------------
+	Name: Think
+-----------------------------------------------------------]]
+function ENT:Think()
+
+end
+
+-- Called to update which sounds the NPC should be able to hear
+function ENT:GetSoundInterests()
+	-- Hear thumper sound hints
+	-- return 256
+end
+
+-- Called when NPC's movement fails
+function ENT:OnMovementFailed()
+end
+
+-- Called when NPC's movement succeeds
+function ENT:OnMovementComplete()
+end
+
+-- Called when the NPC's active weapon changes
+function ENT:OnActiveWeaponChanged( old, new )
+end
+
+--[[---------------------------------------------------------
+	Name: GetAttackSpread
+		How good is the NPC with this weapon? Return the number
+		of degrees of inaccuracy for the NPC to use.
+-----------------------------------------------------------]]
+function ENT:GetAttackSpread( Weapon, Target )
+	return 0.1
+end
