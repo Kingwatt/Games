@@ -1,404 +1,484 @@
+-- bomb menus
+
 include("shared.lua")
 
--- Define GM12 fonts for compatibility
-surface.CreateFont("DefaultBold", {font = "Tahoma",
-                                   size = 13,
-                                   weight = 1000})
-surface.CreateFont("TabLarge",    {font = "Tahoma",
-                                   size = 13,
-                                   weight = 700,
-                                   shadow = true, antialias = false})
-surface.CreateFont("Trebuchet22", {font = "Trebuchet MS",
-                                   size = 22,
-                                   weight = 900})
+local starttime = C4_MINIMUM_TIME
 
-include("corpse_shd.lua")
-include("player_ext_shd.lua")
-include("weaponry_shd.lua")
+local beep = Sound("weapons/c4/c4_click.wav")
 
-include("vgui/ColoredBox.lua")
-include("vgui/SimpleIcon.lua")
-include("vgui/ProgressBar.lua")
-include("vgui/ScrollLabel.lua")
+local T = LANG.GetTranslation
+local PT = LANG.GetParamTranslation
 
-include("cl_radio.lua")
-include("cl_disguise.lua")
-include("cl_transfer.lua")
-include("cl_targetid.lua")
-include("cl_search.lua")
-include("cl_radar.lua")
-include("cl_tbuttons.lua")
-include("cl_scoreboard.lua")
-include("cl_tips.lua")
-include("cl_help.lua")
-include("cl_hud.lua")
-include("cl_msgstack.lua")
-include("cl_hudpickup.lua")
-include("cl_keys.lua")
-include("cl_wepswitch.lua")
-include("cl_scoring.lua")
-include("cl_scoring_events.lua")
-include("cl_popups.lua")
-include("cl_equip.lua")
-include("cl_voice.lua")
+---- ARMING
 
-function GM:Initialize()
-   MsgN("TTT Client initializing...")
+-- Initial bomb arming
+function ShowC4Config(bomb)
+   local dframe = vgui.Create("DFrame")
+   local w, h = 350, 270
+   dframe:SetSize(w, h)
+   dframe:Center()
+   dframe:SetTitle(T("c4_arm"))
+   dframe:SetVisible(true)
+   dframe:ShowCloseButton(true)
+   dframe:SetMouseInputEnabled(true)
 
-   GAMEMODE.round_state = ROUND_WAIT
+   local m = 5
 
-   LANG.Init()
+   local bg = vgui.Create("DPanel", dframe)
+   bg:SetPaintBackground(false)
+   bg:SetPos(0,0)
+   bg:StretchToParent(m,m*5,m,m)
 
-   self.BaseClass:Initialize()
+   -- Time
+   local dformtime = vgui.Create("DForm", bg)
+   dformtime:SetPos(m, m)
+   dformtime:SetSize(w - m*4, h / 2)
+   dformtime:SetName(T("c4_arm_timer"))
+
+   local dclock = vgui.Create("DLabel", dformtime)
+   dclock:SetFont("TimeLeft")
+   dclock:SetText(util.SimpleTime(starttime, "%02i:%02i"))
+   dclock:SizeToContents()
+   dclock:SetPos(m*2, m*2)
+
+   dformtime:AddItem(dclock)
+
+   local ch, cw = dclock:GetSize()
+
+   local dtime = vgui.Create("DNumSlider", dformtime)
+   dtime:SetWide(w - m*4)
+   dtime:SetText(T("c4_arm_seconds"))
+   dtime:SetDark(false)
+   dtime:SetMin(C4_MINIMUM_TIME)
+   dtime:SetMax(C4_MAXIMUM_TIME)
+   dtime:SetDecimals(0)
+   dtime:SetValue(starttime)
+   dtime.Label:SetWrap(true)
+
+   local dwires
+
+   dtime.OnValueChanged = function(self, val)
+                             if not (IsValid(dclock) and IsValid(dwires)) then return end
+                             dclock:SetText(util.SimpleTime(val, "%02i:%02i"))
+
+                             dwires:Update(val)
+                          end
+
+   dformtime:AddItem(dtime)
+
+   dwires = vgui.Create("DLabel", dformtime)
+   dwires:SetText("")
+   dwires:SetWrap(true)
+   dwires:SetTall(30)
+
+   local SafeWires = bomb.SafeWiresForTime
+   dwires.Update = function(s, t)
+                      s:SetText(PT("c4_arm_attempts", {num = C4_WIRE_COUNT - SafeWires(t)}))
+
+                      s:InvalidateLayout()
+                   end
+
+   dwires:Update(starttime)
+
+   dformtime:AddItem(dwires)
+
+   local dformmisc = vgui.Create("DForm", bg)
+   dformmisc:SetAutoSize(false)
+   dformmisc:SetPos(m, m + 140)
+   dformmisc:SetSize(w - m*4, h / 2)
+   dformmisc:SetPadding(20)
+   dformmisc:SetName(T("c4_remove_title"))
+
+   -- Buttons
+   local by = 200
+
+   local bw, bh = 110, 25
+
+   local dgrab = vgui.Create("DButton", dformmisc)
+   dgrab:SetPos(m*6, m*5)
+   dgrab:SetSize(bw, bh)
+   dgrab:SetText(T("c4_remove_pickup"))
+   dgrab:SetDisabled(false)
+   dgrab.DoClick = function()
+                      if not LocalPlayer() or not LocalPlayer():Alive() then return end
+
+                      RunConsoleCommand("ttt_c4_pickup", bomb:EntIndex())
+                      dframe:Close()
+                   end
+
+   --dformmisc:AddItem(dgrab)
+
+   local ddestroy = vgui.Create("DButton", dformmisc)
+   ddestroy:SetPos(w - m*4 - bw - m*6, m*5)
+   ddestroy:SetSize(bw, bh)
+   ddestroy:SetText(T("c4_remove_destroy1"))
+   ddestroy:SetDisabled(false)
+   ddestroy.Confirmed = false
+   ddestroy.DoClick = function(s)
+                         if not LocalPlayer() or not LocalPlayer():Alive() then return end
+
+                         if not s.Confirmed then
+                            s:SetText(T("c4_remove_destroy2"))
+                            s.Confirmed = true
+                         else
+                            RunConsoleCommand("ttt_c4_destroy", bomb:EntIndex())
+                            dframe:Close()
+                         end
+                   end
+
+
+   local dconf = vgui.Create("DButton", bg)
+   dconf:SetPos(m*2, m + by)
+   dconf:SetSize(bw, bh)
+   dconf:SetText(T("c4_arm"))
+   dconf.DoClick = function()
+                      if not LocalPlayer() or not LocalPlayer():Alive() then return end
+                      local t = dtime:GetValue()
+                      if t and tonumber(t) then
+
+                         RunConsoleCommand("ttt_c4_config", bomb:EntIndex(), t)
+                         dframe:Close()
+                      end
+                   end
+
+   local dcancel = vgui.Create("DButton", bg)
+   dcancel:SetPos( w - m*4 - bw, m + by)
+   dcancel:SetSize(bw, bh)
+   dcancel:SetText(T("cancel"))
+   dcancel.DoClick = function() dframe:Close() end
+
+
+   dframe:MakePopup()
 end
 
-function GM:InitPostEntity()
-   MsgN("TTT Client post-init...")
+---- DISARM
 
-   net.Start("TTT_Spectate")
-     net.WriteBool(GetConVar("ttt_spectator_mode"):GetBool())
-   net.SendToServer()
+local disarm_beep    = Sound("buttons/blip2.wav")
+local wire_cut       = Sound("ttt/wirecut.wav")
 
-   if not game.SinglePlayer() then
-      timer.Create("idlecheck", 5, 0, CheckIdle)
-   end
+local c4_bomb_mat    = Material("vgui/ttt/c4_bomb")
+local c4_cut_mat     = Material("vgui/ttt/c4_cut")
+local c4_wire_mat    = Material("vgui/ttt/c4_wire")
+local c4_wirecut_mat = Material("vgui/ttt/c4_wire_cut")
 
-   -- make sure player class extensions are loaded up, and then do some
-   -- initialization on them
-   if IsValid(LocalPlayer()) and LocalPlayer().GetTraitor then
-      GAMEMODE:ClearClientState()
-   end
+--- Disarm panels
+local on_wire_cut = nil
 
-   timer.Create("cache_ents", 1, 0, GAMEMODE.DoCacheEnts)
+-- Wire
+local PANEL = {}
 
-   RunConsoleCommand("_ttt_request_serverlang")
-   RunConsoleCommand("_ttt_request_rolelist")
-end
 
-function GM:DoCacheEnts()
-   RADAR:CacheEnts()
-   TBHUD:CacheEnts()
-end
-
-function GM:HUDClear()
-   RADAR:Clear()
-   TBHUD:Clear()
-end
-
-KARMA = {}
-function KARMA.IsEnabled() return GetGlobalBool("ttt_karma", false) end
-
-function GetRoundState() return GAMEMODE.round_state end
-
-local function RoundStateChange(o, n)
-   if n == ROUND_PREP then
-      -- prep starts
-      GAMEMODE:ClearClientState()
-      GAMEMODE:CleanUpMap()
-
-      -- show warning to spec mode players
-      if GetConVar("ttt_spectator_mode"):GetBool() and IsValid(LocalPlayer())then
-         LANG.Msg("spec_mode_warning")
-      end
-
-      -- reset cached server language in case it has changed
-      RunConsoleCommand("_ttt_request_serverlang")
-   elseif n == ROUND_ACTIVE then
-      -- round starts
-      VOICE.CycleMuteState(MUTE_NONE)
-
-      CLSCORE:ClearPanel()
-
-      -- people may have died and been searched during prep
-      for _, p in player.Iterator() do
-         p.search_result = nil
-      end
-
-      -- clear blood decals produced during prep
-      RunConsoleCommand("r_cleardecals")
-
-      GAMEMODE.StartingPlayers = #util.GetAlivePlayers()
-   elseif n == ROUND_POST then
-      RunConsoleCommand("ttt_cl_traitorpopup_close")
-   end
-
-   -- stricter checks when we're talking about hooks, because this function may
-   -- be called with for example o = WAIT and n = POST, for newly connecting
-   -- players, which hooking code may not expect
-   if n == ROUND_PREP then
-      -- can enter PREP from any phase due to ttt_roundrestart
-      hook.Call("TTTPrepareRound", GAMEMODE)
-   elseif (o == ROUND_PREP) and (n == ROUND_ACTIVE) then
-      hook.Call("TTTBeginRound", GAMEMODE)
-   elseif (o == ROUND_ACTIVE) and (n == ROUND_POST) then
-      hook.Call("TTTEndRound", GAMEMODE)
-   end
-
-   -- whatever round state we get, clear out the voice flags
-   for k,v in player.Iterator() do
-      v.traitor_gvoice = false
-   end
-end
-
-concommand.Add("ttt_print_playercount", function() print(GAMEMODE.StartingPlayers) end)
-
---- optional sound cues on round start and end
-CreateConVar("ttt_cl_soundcues", "0", FCVAR_ARCHIVE)
-
-local cues = {
-   Sound("ttt/thump01e.mp3"),
-   Sound("ttt/thump02e.mp3")
+local wire_colors = {
+   Color(200,   0,   0, 255), -- red
+   Color(255, 255,   0, 255), -- yellow
+   Color( 90,  90, 250, 255), -- blue
+   Color(255, 255, 255, 255), -- white/grey
+   Color( 20, 200,  20, 255), -- green
+   Color(255, 160,  50, 255)  -- brown
 };
-local function PlaySoundCue()
-   if GetConVar("ttt_cl_soundcues"):GetBool() then
-      surface.PlaySound(table.Random(cues))
+
+function PANEL:Init()
+   self.BaseClass.Init(self)
+
+   self:NoClipping(true)
+   self:SetMouseInputEnabled(true)
+   self:MoveToFront()
+
+   self.IsCut = false
+end
+
+local c4_cut_tex = surface.GetTextureID(c4_cut_mat:GetName())
+function PANEL:PaintOverHovered()
+
+   surface.SetTexture(c4_cut_tex)
+   surface.SetDrawColor(255, 255, 255, 255)
+   surface.DrawTexturedRect(175, -20, 32, 32)
+
+   draw.SimpleText(PT("c4_disarm_cut", {num = self.Index}), "DermaDefault", 85, -10, COLOR_WHITE, 0, 0)
+end
+
+PANEL.OnMousePressed = DButton.OnMousePressed
+
+PANEL.OnMouseReleased = DButton.OnMouseReleased
+
+
+function PANEL:OnCursorEntered()
+   if not self.IsCut then
+      self.PaintOver = self.PaintOverHovered
    end
 end
 
-GM.TTTBeginRound = PlaySoundCue
-GM.TTTEndRound = PlaySoundCue
-
---- usermessages
-
-local function ReceiveRole()
-   local client = LocalPlayer()
-   local role = net.ReadUInt(2)
-
-   -- after a mapswitch, server might have sent us this before we are even done
-   -- loading our code
-   if not client.SetRole then return end
-
-   client:SetRole(role)
-
-   Msg("You are: ")
-   if client:IsTraitor() then MsgN("TRAITOR")
-   elseif client:IsDetective() then MsgN("DETECTIVE")
-   else MsgN("INNOCENT") end
-end
-net.Receive("TTT_Role", ReceiveRole)
-
-local function ReceiveRoleList()
-   local role = net.ReadUInt(2)
-   local num_ids = net.ReadUInt(8)
-
-   for i=1, num_ids do
-      local eidx = net.ReadUInt(7) + 1 -- we - 1 worldspawn=0
-
-      local ply = player.GetByID(eidx)
-      if IsValid(ply) and ply.SetRole then
-         ply:SetRole(role)
-
-         if ply:IsTraitor() then
-            ply.traitor_gvoice = false -- assume traitorchat by default
-         end
-      end
-   end
-end
-net.Receive("TTT_RoleList", ReceiveRoleList)
-
--- Round state comm
-local function ReceiveRoundState()
-   local o = GetRoundState()
-   GAMEMODE.round_state = net.ReadUInt(3)
-
-   if o != GAMEMODE.round_state then
-      RoundStateChange(o, GAMEMODE.round_state)
-   end
-
-   MsgN("Round state: " .. GAMEMODE.round_state)
-end
-net.Receive("TTT_RoundState", ReceiveRoundState)
-
--- Cleanup at start of new round
-function GM:ClearClientState()
-   GAMEMODE:HUDClear()
-
-   local client = LocalPlayer()
-   if not client.SetRole then return end -- code not loaded yet
-
-   client:SetRole(ROLE_INNOCENT)
-
-   client.equipment_items = EQUIP_NONE
-   client.equipment_credits = 0
-   client.bought = {}
-   client.last_id = nil
-   client.radio = nil
-   client.called_corpses = {}
-
-   VOICE.InitBattery()
-
-   for _, p in player.Iterator() do
-      if IsValid(p) then
-         p.sb_tag = nil
-         p:SetRole(ROLE_INNOCENT)
-         p.search_result = nil
-      end
-   end
-
-   VOICE.CycleMuteState(MUTE_NONE)
-   RunConsoleCommand("ttt_mute_team_check", "0")
-
-   if GAMEMODE.ForcedMouse then
-      gui.EnableScreenClicker(false)
-   end
-end
-net.Receive("TTT_ClearClientState", GM.ClearClientState)
-
-function GM:CleanUpMap()
-   -- Ragdolls sometimes stay around on clients. Deleting them can create issues
-   -- so all we can do is try to hide them.
-   for _, ent in ipairs(ents.FindByClass("prop_ragdoll")) do
-      if IsValid(ent) and CORPSE.GetPlayerNick(ent, "") != "" then
-         ent:SetNoDraw(true)
-         ent:SetSolid(SOLID_NONE)
-         ent:SetColor(Color(0,0,0,0))
-
-         -- Horrible hack to make targetid ignore this ent, because we can't
-         -- modify the collision group clientside.
-         ent.NoTarget = true
-      end
-   end
-
-   -- This cleans up decals since GMod v100
-   game.CleanUpMap()
+function PANEL:OnCursorExited()
+   self.PaintOver = self.BaseClass.PaintOver
 end
 
--- server tells us to call this when our LocalPlayer has spawned
-local function PlayerSpawn()
-   local as_spec = net.ReadBit() == 1
-   if as_spec then
-      TIPS.Show()
+function PANEL:DoClick()
+   if self:GetParent():GetDisabled() then return end
+
+   self.IsCut = true
+
+   self.PaintOver = self.BaseClass.PaintOver
+
+   self.m_Image:SetMaterial(c4_wirecut_mat)
+
+   surface.PlaySound(wire_cut)
+
+   if on_wire_cut then
+      on_wire_cut(self.Index)
+   end
+end
+
+function PANEL:GetWireColor(i)
+   i = i or 1
+   i = i % (#wire_colors + 1)
+
+   return wire_colors[i] or COLOR_WHITE
+end
+
+function PANEL:SetWireIndex(i)
+   self.m_Image:SetImageColor(self:GetWireColor(i))
+
+   self.Index = i
+end
+
+vgui.Register("DisarmWire", PANEL, "DImageButton")
+
+
+-- Bomb
+local PANEL = {}
+
+AccessorFunc(PANEL, "wirecount", "WireCount")
+
+
+function PANEL:Init()
+   self.Bomb = vgui.Create("DImage", self)
+   self.Bomb:SetSize(256, 256)
+   self.Bomb:SetPos(0,0)
+   self.Bomb:SetMaterial(c4_bomb_mat)
+
+   self:SetWireCount(C4_WIRE_COUNT)
+
+   self.Wires = {}
+
+   local wx, wy = -84, 70
+   local wc = 1
+   for i=1, self:GetWireCount() do
+      local w = vgui.Create("DisarmWire", self)
+      w:SetPos(wx, wy)
+      w:SetImage(c4_wire_mat:GetName())
+      w:SizeToContents()
+
+      w:SetWireIndex(i)
+
+      table.insert(self.Wires, w)
+
+      wy = wy + 27
+   end
+
+   self:SetPaintBackground(false)
+end
+
+vgui.Register( "DisarmPanel", PANEL, "DPanel" )
+
+
+surface.CreateFont("C4Timer", {
+                      font = "TabLarge",
+                      size = 30,
+                      weight = 750
+                   })
+
+local disarm_success, disarm_fail
+
+function ShowC4Disarm(bomb)
+   local dframe = vgui.Create("DFrame")
+   local w, h = 420, 340
+   dframe:SetSize(w, h)
+   dframe:Center()
+   dframe:SetTitle(T("c4_disarm"))
+   dframe:SetVisible(true)
+   dframe:ShowCloseButton(true)
+   dframe:SetMouseInputEnabled(true)
+
+   local m = 5
+   local title_h = 20
+
+   local left_w, left_h = 270, 270
+   local right_w, right_h = 135, left_h
+
+   local bw, bh = 100, 25
+
+   local dleft = vgui.Create("ColoredBox", dframe)
+   dleft:SetColor(Color(50, 50, 50))
+   dleft:SetSize(left_w, left_h)
+   dleft:SetPos(m, m + title_h)
+
+   local dright = vgui.Create("ColoredBox", dframe)
+   dright:SetColor(Color(50, 50, 50))
+   dright:SetSize(right_w, right_h)
+   dright:SetPos(left_w + m * 2, m + title_h)
+
+   local dtimer = vgui.Create("DLabel", dright)
+   dtimer:SetText("99:99:99")
+   dtimer:SetFont("C4Timer")
+   dtimer:SetTextColor(Color(200, 0, 0, 255))
+   dtimer:SetExpensiveShadow(1, COLOR_BLACK)
+   dtimer:SizeToContents()
+   dtimer:SetWide(120)
+   dtimer:SetPos(10, m)
+
+   dtimer.Bomb = bomb
+   dtimer.Stop = false
+
+   dtimer.Think = function(s)
+                     if not IsValid(bomb) then return end
+                     if s.Stop then return end
+
+                     local t = bomb:GetExplodeTime()
+                     if t then
+                        local r = t - CurTime()
+                        if r > 0 then
+                           s:SetText(util.SimpleTime(r, "%02i:%02i:%02i"))
+                        end
+                     end
+                  end
+
+   local dstatus = vgui.Create("DLabel", dright)
+   dstatus:SetText(T("c4_status_armed"))
+   dstatus:SetFont("HealthAmmo")
+   dstatus:SetTextColor(Color(200, 0, 0, 255))
+   dstatus:SetExpensiveShadow(1, COLOR_BLACK)
+   dstatus:SizeToContents()
+   dstatus:SetPos(m, m*2 + 30)
+   dstatus:CenterHorizontal()
+
+
+   local dgrab = vgui.Create("DButton", dright)
+   dgrab:SetPos(m, right_h - m*2 - bh*2)
+   dgrab:SetSize(bw, bh)
+   dgrab:CenterHorizontal()
+   dgrab:SetText(T("c4_remove_pickup"))
+   dgrab:SetDisabled(true)
+   dgrab.DoClick = function()
+                      if (not LocalPlayer():Alive()) then return end
+                      RunConsoleCommand("ttt_c4_pickup", bomb:EntIndex())
+                      dframe:Close()
+                   end
+
+   local ddestroy = vgui.Create("DButton", dright)
+   ddestroy:SetPos(m, right_h - m - bh)
+   ddestroy:SetSize(bw, bh)
+   ddestroy:CenterHorizontal()
+   ddestroy:SetText(T("c4_remove_destroy1"))
+   ddestroy:SetDisabled(true)
+   ddestroy.Confirmed = false
+   ddestroy.DoClick = function(s)
+                         if not LocalPlayer():Alive() then return end
+
+                         if not s.Confirmed then
+                            s:SetText(T("c4_remove_destroy2"))
+                            s.Confirmed = true
+                         else
+                            RunConsoleCommand("ttt_c4_destroy", bomb:EntIndex())
+                            dframe:Close()
+                         end
+                   end
+
+
+   local desc_h = 45
+
+   local ddesc = vgui.Create("DLabel", dleft)
+   ddesc:SetBright(true)
+   ddesc:SetFont("DermaDefaultBold")
+   ddesc:SetSize(256, desc_h)
+   ddesc:SetWrap(true)
+   if LocalPlayer():IsTraitor() then
+      ddesc:SetText(T("c4_disarm_t"))
+   elseif LocalPlayer() == bomb:GetOwner() then
+      ddesc:SetText(T("c4_disarm_owned"))
    else
-      TIPS.Hide()
+      ddesc:SetText(T("c4_disarm_other"))
    end
-end
-net.Receive("TTT_PlayerSpawned", PlayerSpawn)
+   ddesc:SetPos(m, m)
 
-local function PlayerDeath()
-   TIPS.Show()
-end
-net.Receive("TTT_PlayerDied", PlayerDeath)
+   local bg = vgui.Create("ColoredBox", dleft)
+   bg:StretchToParent(m,m + desc_h,m,m)
+   bg:SetColor(Color(20,20,20, 255))
 
-function GM:ShouldDrawLocalPlayer(ply) return false end
-
-local view = {origin = vector_origin, angles = angle_zero, fov=0}
-function GM:CalcView( ply, origin, angles, fov )
-   view.origin = origin
-   view.angles = angles
-   view.fov    = fov
-
-   -- first person ragdolling
-   if ply:Team() == TEAM_SPEC and ply:GetObserverMode() == OBS_MODE_IN_EYE then
-      local tgt = ply:GetObserverTarget()
-      if IsValid(tgt) and (not tgt:IsPlayer()) then
-         -- assume if we are in_eye and not speccing a player, we spec a ragdoll
-         local eyes = tgt:LookupAttachment("eyes") or 0
-         eyes = tgt:GetAttachment(eyes)
-         if eyes then
-            view.origin = eyes.Pos
-            view.angles = eyes.Ang
-         end
-      end
-   end
+   local dbomb = vgui.Create("DisarmPanel", bg)
+   dbomb:SetSize(256, 256)
+   dbomb:Center()
 
 
-   local wep = ply:GetActiveWeapon()
-   if IsValid(wep) then
-      local func = wep.CalcView
-      if func then
-         view.origin, view.angles, view.fov = func( wep, ply, origin*1, angles*1, fov )
-      end
-   end
+   local dcancel = vgui.Create("DButton", dframe)
+   dcancel:SetPos( w - bw - m, h - bh - m)
+   dcancel:SetSize(bw, bh)
+   dcancel:CenterHorizontal()
+   dcancel:SetText(T("close"))
+   dcancel.DoClick = function()
+                        dframe:Close()
+                     end
 
-   return view
-end
+   dframe:MakePopup()
 
-function GM:AddDeathNotice() end
-function GM:DrawDeathNotice() end
+   disarm_success = function()
+                       surface.PlaySound(disarm_beep)
+                       dtimer.Stop = true
 
-function GM:Tick()
-   local client = LocalPlayer()
-   if IsValid(client) then
-      if client:Alive() and client:Team() != TEAM_SPEC then
-         WSWITCH:Think()
-         RADIO:StoreTarget()
-      end
+                       dtimer:SetTextColor(COLOR_GREEN)
 
-      VOICE.Tick()
-   end
+                       dstatus:SetTextColor(COLOR_GREEN)
+                       dstatus:SetText(T("c4_status_disarmed"))
+                       dstatus:SizeToContents()
+                       dstatus:CenterHorizontal()
+
+                       ddestroy:SetDisabled(false)
+                       dgrab:SetDisabled(false)
+                    end
+
+   disarm_fail = function()
+                    dframe:Close()
+                 end
+
+   on_wire_cut = function(idx)
+                    if IsValid(dbomb) then
+                       dbomb:SetDisabled(true)
+                       -- disabled lowers alpha, looks weird here so work around
+                       -- that
+                       dbomb:SetAlpha(255)
+                    end
+
+                    if IsValid(bomb) then
+                       RunConsoleCommand("ttt_c4_disarm", tostring(bomb:EntIndex()), tostring(idx))
+                    end
+                 end
 end
 
 
--- Simple client-based idle checking
-local idle = {ang = nil, pos = nil, mx = 0, my = 0, t = 0}
-function CheckIdle()
-   local client = LocalPlayer()
-   if not IsValid(client) then return end
+---- Communication
 
-   if not idle.ang or not idle.pos then
-      -- init things
-      idle.ang = client:GetAngles()
-      idle.pos = client:GetPos()
-      idle.mx = gui.MouseX()
-      idle.my = gui.MouseY()
-      idle.t = CurTime()
+local function C4ConfigHook()
+   local bomb = net.ReadEntity()
 
-      return
-   end
-
-   if GetRoundState() == ROUND_ACTIVE and client:IsTerror() and client:Alive() then
-      local idle_limit = GetGlobalInt("ttt_idle_limit", 300) or 300
-      if idle_limit <= 0 then idle_limit = 300 end -- networking sucks sometimes
-
-
-      if client:GetAngles() != idle.ang then
-         -- Normal players will move their viewing angles all the time
-         idle.ang = client:GetAngles()
-         idle.t = CurTime()
-      elseif gui.MouseX() != idle.mx or gui.MouseY() != idle.my then
-         -- Players in eg. the Help will move their mouse occasionally
-         idle.mx = gui.MouseX()
-         idle.my = gui.MouseY()
-         idle.t = CurTime()
-      elseif client:GetPos():Distance(idle.pos) > 10 then
-         -- Even if players don't move their mouse, they might still walk
-         idle.pos = client:GetPos()
-         idle.t = CurTime()
-      elseif CurTime() > (idle.t + idle_limit) then
-         RunConsoleCommand("say", "(AUTOMATED MESSAGE) I have been moved to the Spectator team because I was idle/AFK.")
-
-         timer.Simple(0.3, function()
-                              RunConsoleCommand("ttt_spectator_mode", 1)
-                               net.Start("TTT_Spectate")
-                                 net.WriteBool(true)
-                               net.SendToServer()
-                              RunConsoleCommand("ttt_cl_idlepopup")
-                           end)
-      elseif CurTime() > (idle.t + (idle_limit / 2)) then
-         -- will repeat
-         LANG.Msg("idle_warning")
+   if IsValid(bomb) then
+      if not bomb:GetArmed() then
+         ShowC4Config(bomb)
+      else
+         ShowC4Disarm(bomb)
       end
    end
 end
+net.Receive("TTT_C4Config", C4ConfigHook)
 
-function GM:OnEntityCreated(ent)
-   -- Make ragdolls look like the player that has died
-   if ent:IsRagdoll() then
-      local ply = CORPSE.GetPlayer(ent)
+local function C4DisarmResultHook()
+   local bomb = net.ReadEntity()
+   local correct = net.ReadBit() == 1
 
-      if IsValid(ply) then
-         -- Only copy any decals if this ragdoll was recently created
-         if ent:GetCreationTime() > CurTime() - 1 then
-            ent:SnatchModelInstance(ply)
-         end
-
-         -- Copy the color for the PlayerColor matproxy
-         local playerColor = ply:GetPlayerColor()
-         ent.GetPlayerColor = function()
-            return playerColor
-         end
+   if IsValid(bomb) then
+      if correct and disarm_success then
+         disarm_success()
+      elseif disarm_fail then
+         disarm_fail()
       end
    end
-
-   return self.BaseClass.OnEntityCreated(self, ent)
 end
+net.Receive("TTT_C4DisarmResult", C4DisarmResultHook)
